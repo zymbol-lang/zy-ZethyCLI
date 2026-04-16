@@ -1,0 +1,33 @@
+# http
+
+// HTTP client via curl + BashExec
+// Adapted from interpreter/tests/i18n/matematicas/http.zy
+// GAP G1: needs std/net — get, post_json, status
+
+#> {
+    get
+    post_json_file
+    get_status
+}
+
+// Simple GET request
+get(url) {
+    result = <\ "curl -s " url \>
+    <~ result
+}
+
+// POST JSON body read from a file — avoids shell quoting issues (GAP G4)
+// curl's @file syntax reads body from disk
+post_json_file(url, file_path) {
+    result = <\ "curl -s -X POST -H 'Content-Type: application/json' -d '@" file_path "' " url \>
+    <~ result
+}
+
+// Get HTTP status code only (for health checks)
+// --connect-timeout 4: abort if connection not established in 4s
+// --max-time 5: abort entire request after 5s
+// %\{http_code} → %{http_code} after Zymbol escaping (\{ → {, } is literal)
+get_status(url) {
+    result = <\ "curl -s --connect-timeout 4 --max-time 5 -o /dev/null -w '%\{http_code}' " url \>
+    <~ result
+}

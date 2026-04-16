@@ -1,0 +1,11 @@
+# Zymbol artifacts
+*.zbc
+target/
+
+# Temp ZethyCLI runtime files
+/tmp/zeethy/
+~/.ZethyCLI/
+
+# Editor
+.vscode/
+*.swp

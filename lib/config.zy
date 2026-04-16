@@ -1,0 +1,69 @@
+# config
+
+// Persistent configuration — ~/.ZethyCLI/ZethyCLI.conf (JSON via jq)
+// Loaded once at startup; saved on every /model, /mode, /host command.
+// tmp_dir is only applied at startup — change it by editing the config file directly.
+
+#> {
+    load
+    save
+    get_model
+    get_mode
+    get_think
+    get_host
+    get_tmp_dir
+}
+
+cfg_model   = ""
+cfg_mode    = "fast"
+cfg_think   = #0
+cfg_host    = "http://localhost:11434"
+cfg_tmp_dir = "/tmp/ZethyCLI"
+
+load() {
+    <\ "mkdir -p ~/.ZethyCLI" \>
+    exists = <\ "test -f ~/.ZethyCLI/ZethyCLI.conf && echo 1 || echo 0" \>
+    ? (exists$~~["\n":""] == "1") {
+        raw_model   = <\ "jq -r '.model   // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+        raw_mode    = <\ "jq -r '.mode    // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+        raw_think   = <\ "jq -r '.think   // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+        raw_host    = <\ "jq -r '.host    // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+        raw_tmp_dir = <\ "jq -r '.tmp_dir // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+
+        m = raw_model$~~["\n":""]
+        ? (m <> "") { cfg_model = m }
+
+        o = raw_mode$~~["\n":""]
+        ? (o <> "") { cfg_mode = o }
+
+        t = raw_think$~~["\n":""]
+        ? (t == "true") { cfg_think = #1 }
+
+        h = raw_host$~~["\n":""]
+        ? (h <> "") { cfg_host = h }
+
+        d = raw_tmp_dir$~~["\n":""]
+        ? (d <> "") { cfg_tmp_dir = d }
+    }
+    // Ensure tmp dir exists on every startup
+    tmp = cfg_tmp_dir
+    <\ "mkdir -p " tmp \>
+}
+
+// Persist current session config to disk.
+// think is a Zymbol bool — converted to JSON boolean string before jq call.
+save(model, mode, think, host, tmp_dir) {
+    s_model   = model
+    s_mode    = mode
+    s_think   = "false"
+    ? think { s_think = "true" }
+    s_host    = host
+    s_tmp_dir = tmp_dir
+    <\ "jq -n --arg model '" s_model "' --arg mode '" s_mode "' --argjson think " s_think " --arg host '" s_host "' --arg tmp_dir '" s_tmp_dir "' '\{\"model\":$model,\"mode\":$mode,\"think\":$think,\"host\":$host,\"tmp_dir\":$tmp_dir}' > ~/.ZethyCLI/ZethyCLI.conf" \>
+}
+
+get_model()   { <~ cfg_model   }
+get_mode()    { <~ cfg_mode    }
+get_think()   { <~ cfg_think   }
+get_host()    { <~ cfg_host    }
+get_tmp_dir() { <~ cfg_tmp_dir }

@@ -1,0 +1,35 @@
+# json
+
+// JSON encode/decode via jq + BashExec
+// GAP G2: needs std/json — encode, decode
+// GAP G4: single quotes in content sanitized to (APOS) before shell interpolation
+
+#> {
+    encode
+    decode
+    trim_nl
+}
+
+// Encode raw string as JSON string value (with surrounding quotes)
+// e.g.  hello "world"  →  "hello \"world\""
+// GAP G4: replaces ' with (APOS) before BashExec interpolation
+encode(raw) {
+    safe = raw$~~["'":"(APOS)"]
+    result = <\ "printf '%s' '" safe "' | jq -Rs ." \>
+    <~ result$~~["\n":""]
+}
+
+// Extract a dotted-path field from a JSON object string
+// e.g. decode(json, "message.content") → field value as string
+// GAP G4: sanitizes single quotes before BashExec
+decode(json_str, key) {
+    safe = json_str$~~["'":"(APOS)"]
+    <\ "mkdir -p /tmp/ZethyCLI && printf '%s' '" safe "' > /tmp/ZethyCLI/dec.json" \>
+    result = <\ "jq -r '." key "' /tmp/ZethyCLI/dec.json" \>
+    <~ result$~~["\n":""]
+}
+
+// Remove trailing newline left by BashExec (GAP G7)
+trim_nl(s) {
+    <~ s$~~["\n":""]
+}

@@ -1,0 +1,124 @@
+# ollama
+
+// Ollama API client — uses http.zy and json.zy, no Python3
+// G1 workaround: HTTP via curl (http.zy)
+// G2 workaround: JSON via jq (json.zy + inline jq calls)
+// G9, G13, G16 resolved: module vars and function params are visible directly
+// in BashExec args, ? blocks, @ loops, and ?? match arms — no local copies needed.
+// host_base, tmp_dir are private mutable state — updated by setters, read directly in fns
+
+#> {
+    chat
+    summarize
+    models
+    is_running
+    is_installed
+    model_exists
+    supports_think
+    set_host
+    get_host
+    set_tmp_dir
+}
+
+<# ./http <= http
+<# ./json <= json
+
+host_base = "http://localhost:11434"
+tmp_dir   = "/tmp/ZethyCLI"
+
+// Change Ollama host. Accepts "192.168.1.1", "192.168.1.1:9999", or "http://..."
+// No port → :11434 appended automatically
+set_host(addr) {
+    proto_pos = addr$?? "://"
+    ? (proto_pos$# == 0) {
+        colon_pos = addr$?? ":"
+        ? (colon_pos$# == 0) {
+            host_base = "http://" $++ addr ":11434"
+        } _ {
+            host_base = "http://" $++ addr
+        }
+    } _ {
+        host_base = addr
+    }
+}
+
+get_host() { <~ host_base }
+
+// Update temp directory used for intermediate files
+set_tmp_dir(dir) { tmp_dir = dir }
+
+// Query /api/show and check if "thinking" is listed in capabilities.
+// Returns #1 if supported, #0 otherwise (also #0 on any API/network error).
+supports_think(model) {
+    show_url = host_base $+ "/api/show"
+    has = <\ "curl -s -X POST -H 'Content-Type: application/json' -d '\{\"model\":\"" model "\"}' " show_url " 2>/dev/null | jq -r '.capabilities // [] | .[]' 2>/dev/null | grep -q thinking && echo 1 || echo 0" \>
+    <~ (has$~~["\n":""] == "1")
+}
+
+// Send a chat request to Ollama
+// msgs_file: path to JSON array of message objects (from history::get_msgs_file)
+// Returns assistant response text
+chat(model, msgs_file, think) {
+    chat_url  = host_base $+ "/api/chat"
+    req_file  = tmp_dir $+ "/req.json"
+    resp_file = tmp_dir $+ "/resp.json"
+    cont_file = tmp_dir $+ "/content.txt"
+    think_val = "false"
+    ? think { think_val = "true" }
+    // Build request via subshell — ( ) avoids { } which triggers Zymbol interpolation
+    // \{ escapes literal { in Zymbol strings
+    <\ "(printf '\{\"model\":\"%s\",\"messages\":' '" model "'; cat " msgs_file "; printf ',\"stream\":false,\"think\":" think_val "}') > " req_file \>
+    // Send to Ollama — write response directly to file
+    <\ "curl -s -X POST -H 'Content-Type: application/json' -d '@" req_file "' " chat_url " > " resp_file \>
+    // Extract content to a file — jq handles all escaping, no shell quoting of content
+    <\ "jq -r '.message.content // empty' " resp_file " > " cont_file " 2>/dev/null" \>
+    content = <\ "cat " cont_file \>
+    <~ content
+}
+
+// Summarize the conversation in msgs_file.
+// Builds a one-shot request (history + summary instruction) — NOT added to real history.
+// Writes summary text to {tmp_dir}/sum_content.txt and returns that path.
+// Caller passes the path to memory::save_summary() to avoid shell quoting of AI content.
+summarize(model, msgs_file) {
+    sum_url       = host_base $+ "/api/chat"
+    sum_req_file  = tmp_dir $+ "/sum_req.json"
+    sum_resp_file = tmp_dir $+ "/sum_resp.json"
+    sum_cont_file = tmp_dir $+ "/sum_content.txt"
+    instr_file    = tmp_dir $+ "/sum_instr.txt"
+    // Write instruction to file — avoids shell quoting of the instruction string
+    <\ "printf 'Summarize this conversation in 3 to 5 concise bullet points. Focus on key topics, decisions, and facts about the user. Be brief.' > " instr_file \>
+    // Build request: current history + summary instruction, stream:false
+    <\ "jq --arg m '" model "' --rawfile instr " instr_file " '\{model:$m,messages:(. + [\{role:\"user\",content:$instr}]),stream:false}' " msgs_file " > " sum_req_file \>
+    <\ "curl -s -X POST -H 'Content-Type: application/json' -d '@" sum_req_file "' " sum_url " > " sum_resp_file \>
+    <\ "jq -r '.message.content // empty' " sum_resp_file " > " sum_cont_file " 2>/dev/null" \>
+    <~ sum_cont_file
+}
+
+// List available models as comma-separated string
+models() {
+    tags_url  = host_base $+ "/api/tags"
+    tags_file = tmp_dir $+ "/tags.json"
+    <\ "curl -s " tags_url " > " tags_file \>
+    result = <\ "jq -r '[.models[].name] | join(\", \")' " tags_file " 2>/dev/null" \>
+    <~ result$~~["\n":""]
+}
+
+// Check if the `ollama` binary is available in PATH
+is_installed() {
+    result = <\ "command -v ollama > /dev/null 2>&1 && echo 1 || echo 0" \>
+    <~ (result$~~["\n":""] == "1")
+}
+
+// Check if a specific model name exists in `ollama list`
+model_exists(name) {
+    result = <\ "ollama list 2>/dev/null | tail -n +2 | awk '\{print $1\}' | grep -qx '" name "' && echo 1 || echo 0" \>
+    <~ (result$~~["\n":""] == "1")
+}
+
+// Check if Ollama service is reachable
+is_running() {
+    base_url = host_base $+ "/"
+    status   = http::get_status(base_url)
+    <~ status == "200"
+}

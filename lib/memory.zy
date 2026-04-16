@@ -1,0 +1,46 @@
+# memory
+
+// Cross-session persistent memory — ~/.ZethyCLI/memory.txt
+// Stores user-defined facts (/remember) and auto-generated session summaries (/exit).
+// Injected into the system prompt at startup so the model always has context.
+// G4 workaround: save_fact sanitizes single quotes; save_summary uses file-cat
+//   to avoid shell quoting of arbitrary AI-generated content.
+
+#> {
+    get_context
+    save_fact
+    save_summary
+    clear
+}
+
+// Returns full memory.txt content for system prompt injection.
+// Returns "" if the file does not exist (first run, no memory yet).
+get_context() {
+    exists = <\ "test -f ~/.ZethyCLI/memory.txt && echo 1 || echo 0" \>
+    ? (exists$~~["\n":""] == "1") {
+        content = <\ "cat ~/.ZethyCLI/memory.txt" \>
+        <~ content
+    }
+    <~ ""
+}
+
+// Append a user-defined fact as a bullet point.
+// G4: sanitizes single quotes before shell interpolation.
+save_fact(fact) {
+    safe = fact$~~["'":"(APOS)"]
+    <\ "printf '\\n- " safe "' >> ~/.ZethyCLI/memory.txt" \>
+}
+
+// Append a dated summary block from a content file.
+// sum_content_file: path to file written by ollama::summarize() — avoids
+// shell quoting of AI-generated content entirely (G4 full mitigation).
+save_summary(sum_content_file) {
+    date_str = <\ "date '+%Y-%m-%d %H:%M'" \>
+    date_str = date_str$~~["\n":""]
+    <\ "\{ printf '\\n[" date_str "]\\n'; cat " sum_content_file "; \} >> ~/.ZethyCLI/memory.txt" \>
+}
+
+// Erase all memory. Called by /forget command.
+clear() {
+    <\ "rm -f ~/.ZethyCLI/memory.txt" \>
+}

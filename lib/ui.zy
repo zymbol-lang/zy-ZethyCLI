@@ -1,0 +1,66 @@
+# ui
+
+// Terminal output — pure Zymbol, no BashExec
+// STRENGTH: >> juxtaposition + explicit ¶ makes UI output very readable
+// GAP G12: ¶ terminates >> — cannot mix ¶ mid-statement, must split lines
+
+#> {
+    banner
+    divider
+    show_response
+    show_error
+    show_info
+    show_mode
+    show_help
+}
+
+banner() {
+    >> "╔═══════════════════════════════════════════╗" ¶
+    >> "║   ZethyCLI — Zymbol AI Engine  v0.1      ║" ¶
+    >> "║   /help for commands · /exit to quit      ║" ¶
+    >> "╚═══════════════════════════════════════════╝" ¶
+}
+
+divider() {
+    >> "───────────────────────────────────────────" ¶
+}
+
+show_response(text, model) {
+    >> ¶
+    >> "  [" model "] › " text ¶
+    >> ¶
+}
+
+show_error(msg) {
+    >> "[error] " msg ¶
+}
+
+show_info(msg) {
+    >> "[info]  " msg ¶
+}
+
+show_mode(mode, model) {
+    >> "[mode]  " mode " → " model ¶
+}
+
+show_help() {
+    >> ¶
+    >> "  Commands:" ¶
+    >> "  /model <name>       switch model  (no args → shows ollama list)  (saved)" ¶
+    >> "  /mode think         enable reasoning mode for current model       (saved)" ¶
+    >> "  /mode fast          disable reasoning mode                        (saved)" ¶
+    >> "  /host <addr>        change Ollama host  e.g. /host 192.168.1.1   (saved)" ¶
+    >> "  /models             list installed Ollama models (ollama list)" ¶
+    >> "  /clear              reset conversation history (memory preserved)" ¶
+    >> "  /reset              clear all session temp files and restart" ¶
+    >> "  /info               show model, mode, host, tmp_dir and turn count" ¶
+    >> "  /file <path>        send file content to model as context" ¶
+    >> "  /remember <fact>    save a fact to persistent memory (~/.ZethyCLI/memory.txt)" ¶
+    >> "  /memory             show current memory content" ¶
+    >> "  /forget             clear all persistent memory" ¶
+    >> "  /history            list all archived sessions (~/.ZethyCLI/sessions/)" ¶
+    >> "  /help               this message" ¶
+    >> "  /exit               quit  (auto-saves session summary to memory)" ¶
+    >> "  Config: ~/.ZethyCLI/ZethyCLI.conf  (edit tmp_dir there, restart to apply)" ¶
+    >> ¶
+}

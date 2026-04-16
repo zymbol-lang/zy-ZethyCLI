@@ -1,0 +1,312 @@
+// ZethyCLI — main entry point
+// Run from ZethyCLI/ directory: zymbol run main.zy
+
+<# ./lib/config   <= conf
+<# ./lib/ui       <= ui
+<# ./lib/history  <= hist
+<# ./lib/memory   <= memory
+<# ./lib/sessions <= sessions
+<# ./lib/ollama   <= ollama
+
+// ── Prompt user to pick a valid model from `ollama list` ─────────────────
+pick_model() {
+    raw_list = <\ "ollama list" \>
+    >> raw_list ¶
+    chosen = ""
+    @ {
+        << "Model name: " chosen
+        chosen = chosen$~~["\n":""]
+        ? (ollama::model_exists(chosen)) { @! }
+        ui::show_error("Model not found — pick one from the list above")
+    }
+    <~ chosen
+}
+
+// ── Load persistent config ────────────────────────────────────────────────
+conf::load()
+mode    = conf::get_mode()
+model   = conf::get_model()
+think   = conf::get_think()
+tmp_dir = conf::get_tmp_dir()
+
+// ── Apply config to modules ───────────────────────────────────────────────
+ollama::set_host(conf::get_host())
+ollama::set_tmp_dir(tmp_dir)
+hist::set_tmp_dir(tmp_dir)
+sessions::set_tmp_dir(tmp_dir)
+
+// ── Startup ────────────────────────────────────────────────────────────────
+sys_prompt = "You are ZethyCLI, a helpful AI assistant built to test the Zymbol programming language. Be concise and clear."
+
+ui::banner()
+
+// ── Verify ollama binary is available ─────────────────────────────────────
+? (ollama::is_installed() == #0) {
+    ui::show_error("ollama not found — install it first: https://ollama.com")
+    @!
+}
+
+running = ollama::is_running()
+
+? running {
+
+    // ── First-run / empty-config model picker ─────────────────────────
+    ? (model == "") {
+        ui::show_info("First run — no model configured.")
+        >> ¶
+        model = pick_model()
+        mode  = "fast"
+        think = #0
+        host  = ollama::get_host()
+        conf::save(model, mode, think, host, tmp_dir)
+        ui::show_info("Model saved to ~/.ZethyCLI/ZethyCLI.conf")
+    }
+
+    ui::show_info("Ollama connected.")
+    ui::show_mode(mode, model)
+    mem_ctx = memory::get_context()
+    hist::init(sys_prompt, mem_ctx)
+    sessions::start()
+
+    // ── REPL loop ──────────────────────────────────────────────────────
+    @ {
+        << "> " raw_input
+        input = raw_input$~~["\n":""]
+
+        // Skip empty lines
+        ? input == "" { @> }
+
+        // ── Command routing ────────────────────────────────────────────
+        first = input$[1..1]
+
+        ? first == "/" {
+
+            // Pre-declare cmd/args before conditional (block-scoping workaround)
+            cmd  = ""
+            args = ""
+
+            // Split on first space — GAP G6: no native split yet
+            positions = input$?? " "
+            ? (positions$# == 0) {
+                cmd = input
+            } _ {
+                p      = positions[1]
+                pend   = p - 1
+                pstart = p + 1
+                cmd    = input$[1..pend]
+                args   = input$[pstart..-1]
+            }
+
+            args = args$~~["\n":""]
+
+            ?? cmd {
+                "/exit" : {
+                    turns = hist::get_count()
+                    ? (turns > 2) {
+                        ui::show_info("Summarizing session...")
+                        sum_file = ollama::summarize(model, hist::get_msgs_file())
+                        memory::save_summary(sum_file)
+                        ui::show_info("Session summary saved.")
+                    }
+                    ui::show_info("Goodbye.")
+                    @!
+                }
+
+                "/help" : {
+                    ui::show_help()
+                }
+
+                "/clear" : {
+                    hist::clear()
+                    hist::init(sys_prompt, mem_ctx)
+                    ui::show_info("Conversation cleared. (memory preserved — /forget to erase)")
+                }
+
+                // /mode controls only the think flag — model is unchanged
+                "/mode" : {
+                    ?? args {
+                        "think" : {
+                            ok = ollama::supports_think(model)
+                            ? ok {
+                                think = #1
+                                mode  = "think"
+                                host  = ollama::get_host()
+                                conf::save(model, mode, think, host, tmp_dir)
+                                ui::show_info("Think mode ON")
+                            } _ {
+                                warn = "Model " $++ model " does not support think mode — staying OFF"
+                                ui::show_error(warn)
+                            }
+                        }
+                        "fast" : {
+                            think = #0
+                            mode  = "fast"
+                            host  = ollama::get_host()
+                            conf::save(model, mode, think, host, tmp_dir)
+                            ui::show_info("Think mode OFF")
+                        }
+                        _ : {
+                            ui::show_error("Usage: /mode fast|think")
+                        }
+                    }
+                }
+
+                "/model" : {
+                    ? (args == "") {
+                        raw_list = <\ "ollama list" \>
+                        >> raw_list ¶
+                    } _ {
+                        ? (ollama::model_exists(args)) {
+                            model = args
+                            // If think is active, verify new model supports it
+                            ? think {
+                                ok = ollama::supports_think(model)
+                                ? ok {
+                                    ui::show_info("Think mode supported.")
+                                } _ {
+                                    think = #0
+                                    mode  = "fast"
+                                    warn  = "Model " $++ model " does not support think mode — disabled"
+                                    ui::show_error(warn)
+                                }
+                            }
+                            host = ollama::get_host()
+                            conf::save(model, mode, think, host, tmp_dir)
+                            ui::show_mode(mode, model)
+                        } _ {
+                            warn = "Model not found: " $++ args
+                            ui::show_error(warn)
+                            ui::show_info("Use /models to list available models")
+                        }
+                    }
+                }
+
+                "/host" : {
+                    ? (args == "") {
+                        ui::show_error("Usage: /host <addr>  e.g. /host 192.168.1.1 or /host 192.168.1.1:11434")
+                    } _ {
+                        ollama::set_host(args)
+                        host = ollama::get_host()
+                        >> "[info]  Host → " host ¶
+                        conf::save(model, mode, think, host, tmp_dir)
+                        ok = ollama::is_running()
+                        ? ok {
+                            ui::show_info("Ollama reachable at new host.")
+                        } _ {
+                            ui::show_error("Ollama not reachable at new host.")
+                        }
+                    }
+                }
+
+                "/models" : {
+                    raw_list = <\ "ollama list" \>
+                    >> raw_list ¶
+                }
+
+                "/info" : {
+                    turns = hist::get_count()
+                    host  = ollama::get_host()
+                    >> "  model   : " model ¶
+                    >> "  mode    : " mode ¶
+                    >> "  think   : " think ¶
+                    >> "  host    : " host ¶
+                    >> "  tmp_dir : " tmp_dir ¶
+                    >> "  turns   : " turns ¶
+                }
+
+                "/file" : {
+                    ? (args == "") {
+                        ui::show_error("Usage: /file <path>")
+                    } _ {
+                        exists = <\ "test -f '" args "' && echo 1 || echo 0" \>
+                        ? (exists$~~["\n":""] == "1") {
+                            size = <\ "du -sh '" args "' | cut -f1" \>
+                            size = size$~~["\n":""]
+                            ui::show_info("Sending file: " $++ args " (" size ")")
+                            hist::add_user_from_file(args, args)
+                            sessions::append_user("/file " $++ args)
+                            msgs_file = hist::get_msgs_file()
+                            ui::show_info("...")
+                            response = ollama::chat(model, msgs_file, think)
+                            hist::add_assistant(response)
+                            sessions::append_assistant()
+                            ui::show_response(response, model)
+                        } _ {
+                            ui::show_error("File not found: " $++ args)
+                        }
+                    }
+                }
+
+                "/remember" : {
+                    ? (args == "") {
+                        ui::show_error("Usage: /remember <fact>")
+                    } _ {
+                        memory::save_fact(args)
+                        ui::show_info("Remembered.")
+                    }
+                }
+
+                "/memory" : {
+                    ctx = memory::get_context()
+                    ? (ctx == "") {
+                        ui::show_info("No memory saved yet. Use /remember <fact> to add.")
+                    } _ {
+                        >> ¶
+                        >> ctx ¶
+                        >> ¶
+                    }
+                }
+
+                "/forget" : {
+                    memory::clear()
+                    ui::show_info("Memory cleared.")
+                }
+
+                "/history" : {
+                    listing = sessions::list()
+                    ? (listing$~~["\n":""] == "") {
+                        ui::show_info("No sessions archived yet.")
+                    } _ {
+                        >> "[sessions]" ¶
+                        >> listing ¶
+                    }
+                }
+
+                "/reset" : {
+                    <\ "rm -f " tmp_dir "/*.json " tmp_dir "/*.txt " tmp_dir "/*.err" \>
+                    <\ "rm -f ~/.ZethyCLI/ZethyCLI.conf" \>
+                    model = pick_model()
+                    mode  = "fast"
+                    think = #0
+                    host  = ollama::get_host()
+                    conf::save(model, mode, think, host, tmp_dir)
+                    ui::show_info("Model saved to ~/.ZethyCLI/ZethyCLI.conf")
+                    hist::init(sys_prompt, mem_ctx)
+                    ui::show_info("Session reset.")
+                }
+
+                _ : {
+                    ui::show_error("Unknown command — type /help")
+                }
+            }
+
+        // ── Chat turn ──────────────────────────────────────────────────
+        } _ {
+            hist::add_user(input)
+            sessions::append_user(input)
+            msgs_file = hist::get_msgs_file()
+
+            ui::show_info("...")
+            response = ollama::chat(model, msgs_file, think)
+
+            hist::add_assistant(response)
+            sessions::append_assistant()
+            ui::show_response(response, model)
+        }
+    }
+
+} _ {
+    host = ollama::get_host()
+    ui::show_error("Ollama not reachable at " , host)
+    ui::show_info("Start Ollama with: ollama serve")
+}
