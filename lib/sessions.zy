@@ -1,54 +1,54 @@
-# sessions
-
 // Incremental session archive — ~/.ZethyCLI/sessions/YYYY-MM-DD_HH-MM-SS.json
 // Written per turn: append_user before the API call, append_assistant after.
 // Crash-safe: the worst-case loss is one assistant response — the user prompt
 // that triggered it is always archived before we touch Ollama.
 // tmp_dir is set by set_tmp_dir() at startup (same as history.zy pattern).
 
-#> {
-    start
-    set_tmp_dir
-    append_user
-    append_assistant
-    list
-}
+# sessions {
+    #> {
+        start
+        set_tmp_dir
+        append_user
+        append_assistant
+        list
+    }
 
-// Private mutable state
-tmp_dir      = "/tmp/ZethyCLI"
-session_file = ""
+    // Private mutable state
+    tmp_dir      = "/tmp/ZethyCLI"
+    session_file = ""
 
-set_tmp_dir(dir) {
-    tmp_dir = dir
-}
+    set_tmp_dir(dir) {
+        tmp_dir = dir
+    }
 
-// Create the session file for this run (empty JSON array).
-// Called once at startup after set_tmp_dir().
-start() {
-    ts = <\ "date '+%Y-%m-%d_%H-%M-%S'" \>
-    ts = ts$~~["\n":""]
-    <\ "mkdir -p ~/.ZethyCLI/sessions" \>
-    session_file = "~/.ZethyCLI/sessions/" $++ ts $+ ".json"
-    <\ "printf '[]' > " session_file \>
-}
+    // Create the session file for this run (empty JSON array).
+    // Called once at startup after set_tmp_dir().
+    start() {
+        ts = <\ "date '+%Y-%m-%d_%H-%M-%S'" \>
+        ts = ts$~~["\n":""]
+        <\ "mkdir -p ~/.ZethyCLI/sessions" \>
+        session_file = "~/.ZethyCLI/sessions/" $++ ts $+ ".json"
+        <\ "printf '[]' > " session_file \>
+    }
 
-// Append a user message to the session archive.
-// G4: sanitize single quotes before shell interpolation.
-append_user(content) {
-    safe = content$~~["'":"(APOS)"]
-    <\ "jq --arg c '" safe "' '. += [\{role:\"user\",content:$c}]' " session_file " > " tmp_dir "/sess_tmp.json && mv " tmp_dir "/sess_tmp.json " session_file \>
-}
+    // Append a user message to the session archive.
+    // G4: sanitize single quotes before shell interpolation.
+    append_user(content) {
+        safe = content$~~["'":"(APOS)"]
+        <\ "jq --arg c '" safe "' '. += [\{role:\"user\",content:$c}]' " session_file " > " tmp_dir "/sess_tmp.json && mv " tmp_dir "/sess_tmp.json " session_file \>
+    }
 
-// Append the assistant response from {tmp_dir}/content.txt.
-// Uses --rawfile to avoid G4 — AI content is never shell-quoted.
-append_assistant() {
-    content_file = tmp_dir $+ "/content.txt"
-    <\ "jq --rawfile c " content_file " '. += [\{role:\"assistant\",content:$c}]' " session_file " > " tmp_dir "/sess_tmp.json && mv " tmp_dir "/sess_tmp.json " session_file \>
-}
+    // Append the assistant response from {tmp_dir}/content.txt.
+    // Uses --rawfile to avoid G4 — AI content is never shell-quoted.
+    append_assistant() {
+        content_file = tmp_dir $+ "/content.txt"
+        <\ "jq --rawfile c " content_file " '. += [\{role:\"assistant\",content:$c}]' " session_file " > " tmp_dir "/sess_tmp.json && mv " tmp_dir "/sess_tmp.json " session_file \>
+    }
 
-// List all session files, newest-first.
-// Returns a formatted multi-line string; each line shows date/time and message count.
-list() {
-    result = <\ "ls -t ~/.ZethyCLI/sessions/*.json 2>/dev/null | while read f; do n=$(jq 'length' \"$f\" 2>/dev/null || echo '?'); base=$(basename \"$f\" .json); echo \"  $\{base/_/ } ($n messages)\"; done" \>
-    <~ result
+    // List all session files, newest-first.
+    // Returns a formatted multi-line string; each line shows date/time and message count.
+    list() {
+        result = <\ "ls -t ~/.ZethyCLI/sessions/*.json 2>/dev/null | while read f; do n=$(jq 'length' \"$f\" 2>/dev/null || echo '?'); base=$(basename \"$f\" .json); echo \"  $\{base/_/ } ($n messages)\"; done" \>
+        <~ result
+    }
 }

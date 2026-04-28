@@ -145,14 +145,15 @@ Zymbol modules have two kinds of top-level declarations:
 | `fn(args) { }` | function | — | ✅ via `#>` |
 
 ```zymbol
-# counter
-#> { increment, get_value, STEP }
+# counter {
+    #> { increment, get_value, STEP }
 
-STEP  := 1          // exported constant — accessible as alias.STEP
-count = 0           // private mutable state — persists between calls
+    STEP  := 1          // exported constant — accessible as alias.STEP
+    count = 0           // private mutable state — persists between calls
 
-increment() { count = count + STEP }
-get_value()  { <~ count }
+    increment() { count = count + STEP }
+    get_value()  { <~ count }
+}
 ```
 
 ```zymbol
@@ -175,24 +176,29 @@ and cannot be accessed except through exported functions.
 The export block can appear in two positions — both are valid:
 
 ```zymbol
-// Position 1 — before imports:
-# module_name
-#> { fn, CONST }
-<# ./dep <= dep
-code...
+// Position 1 — exports before imports:
+# module_name {
+    #> { fn, CONST }
+    <# ./dep <= dep
+    code...
+}
 
-// Position 2 — after imports:
-# module_name
-<# ./dep <= dep
-#> { fn, CONST }
-code...
+// Position 2 — imports before exports (MANUAL recommended order):
+# module_name {
+    <# ./dep <= dep
+    #> { fn, CONST }
+    code...
+}
 ```
 
-Comments between `# name` and `#>` are always allowed (stripped by lexer).
+Comments and function definitions can appear anywhere inside the block.
 
 ---
 
 ## Module Designs
+
+> **v0.0.4**: All modules use closed block syntax — `# name { ... }`.
+> The code blocks below show interface design; see the actual `lib/*.zy` files for the current implementation.
 
 ### lib/config.zy
 
@@ -586,16 +592,16 @@ post_json_file(url, file_path) {
 }
 
 // Get HTTP status code (for health checks)
-// %{{http_code} → %{http_code} after Zymbol escaping: {{ → {, } is literal
+// %\{http_code} → %{http_code} after Zymbol escaping (\{ → {, } is literal)
 get_status(url) {
-    result = <\ "curl -s -o /dev/null -w '%{{http_code}' " url \>
+    result = <\ "curl -s --connect-timeout 4 --max-time 5 -o /dev/null -w '%\{http_code}' " url \>
     <~ result
 }
 ```
 
-**Note on `{{`**: In Zymbol strings, `{{` is the escape sequence for a literal
-`{`. A single `}` requires no escaping. So `%{{http_code}` → `%{http_code}` —
-the correct curl format string.
+**Note on `\{`**: In Zymbol strings, `\{` is the escape sequence for a literal `{`
+and `\}` for a literal `}`. So `%\{http_code}` → `%{http_code}` — the correct curl
+format string.
 
 ---
 
@@ -802,10 +808,10 @@ file_path = "/tmp/out.json"
 result = <\ "cat {file_path}" \>        // → cat /tmp/out.json
 ```
 
-Use `{{` to include a literal `{` in a string:
+Use `\{` and `\}` to include literal braces in a string:
 ```zymbol
 // jq object syntax inside BashExec string:
-<\ "jq -n '{{key:\"val\"}}'" \>         // → jq -n '{key:"val"}'
+<\ "jq -n '\{key:\"val\"\}'" \>         // → jq -n '{key:"val"}'
 ```
 
 ---
@@ -826,7 +832,7 @@ Use `{{` to include a literal `{` in a string:
 | G11 | `alias::fn()` as void statement | — | ✅ parser fix |
 | G12 | BashExec opaque `{var}` syntax | — | ✅ redesigned — Zymbol expressions |
 | G13 | Module private mutable state | — | ✅ write-back after function calls |
-| G14 | `#>` must immediately follow `# name` | — | ✅ both positions valid |
+| G14 | `#>` must immediately follow `# name` | — | ✅ any position inside `# name { }` block |
 
 ---
 

@@ -1,91 +1,91 @@
-# history
-
 // Conversation history — file-based state in {tmp_dir}/msgs.json
-// G2 workaround: JSON manipulation via jq (replaces Python3)
+// G2 workaround: JSON manipulation via jq
 // G3 workaround: File I/O via BashExec
 // File-based storage chosen over module state (G13) because history
 // must survive program restarts and is shared across module boundaries.
 // tmp_dir is private mutable state — set via set_tmp_dir() at startup.
 
-#> {
-    init
-    add_user
-    add_user_from_file
-    add_assistant
-    get_msgs_file
-    get_count
-    clear
-    set_tmp_dir
-}
-
-// Private mutable paths — updated by set_tmp_dir()
-tmp_dir    = "/tmp/ZethyCLI"
-msgs_file  = "/tmp/ZethyCLI/msgs.json"
-count_file = "/tmp/ZethyCLI/count.txt"
-
-// Update temp directory and rebuild derived paths
-set_tmp_dir(dir) {
-    tmp_dir    = dir
-    msgs_file  = dir $+ "/msgs.json"
-    count_file = dir $+ "/count.txt"
-}
-
-get_msgs_file() { <~ msgs_file }
-
-get_count() {
-    raw = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-    <~ #|raw$~~["\n":""]|
-}
-
-// Initialize conversation with a system prompt and optional memory context.
-// mem_ctx: content of ~/.ZethyCLI/memory.txt — injected after sys prompt if non-empty.
-// G4: full_prompt sanitized before shell interpolation.
-init(system_prompt, mem_ctx) {
-    full_prompt = system_prompt
-    ? (mem_ctx <> "") {
-        full_prompt = system_prompt $++ "\n\nMemory from previous sessions:\n" mem_ctx
+# history {
+    #> {
+        init
+        add_user
+        add_user_from_file
+        add_assistant
+        get_msgs_file
+        get_count
+        clear
+        set_tmp_dir
     }
-    safe = full_prompt$~~["'":"(APOS)"]
-    <\ "jq -n --arg c '" safe "' '[\{role:\"system\",content:$c}]' > " msgs_file \>
-    <\ "printf '1' > " count_file \>
-}
 
-// Append a user message
-add_user(raw_content) {
-    safe = raw_content$~~["'":"(APOS)"]
-    <\ "jq --arg c '" safe "' '. += [\{role:\"user\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
-    raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-    n = #|raw_n$~~["\n":""]|
-    new_n = n + 1
-    <\ "printf '" new_n "' > " count_file \>
-}
+    // Private mutable paths — updated by set_tmp_dir()
+    tmp_dir    = "/tmp/ZethyCLI"
+    msgs_file  = "/tmp/ZethyCLI/msgs.json"
+    count_file = "/tmp/ZethyCLI/count.txt"
 
-// Append a user message from file content — avoids shell quoting of arbitrary
-// content (G4 full mitigation via --rawfile, same pattern as add_assistant).
-// label: display name shown to the model (usually the file path)
-// content_file: path to the file whose content is sent
-add_user_from_file(label, content_file) {
-    msg_file = tmp_dir $+ "/file_msg.txt"
-    <\ "\{ printf 'File: " label "\\n```\\n'; cat '" content_file "'; printf '\\n```'; \} > " msg_file \>
-    <\ "jq --rawfile c " msg_file " '. += [\{role:\"user\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
-    raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-    n = #|raw_n$~~["\n":""]|
-    new_n = n + 1
-    <\ "printf '" new_n "' > " count_file \>
-}
+    // Update temp directory and rebuild derived paths
+    set_tmp_dir(dir) {
+        tmp_dir    = dir
+        msgs_file  = dir $+ "/msgs.json"
+        count_file = dir $+ "/count.txt"
+    }
 
-// Append an assistant message
-// Reads content from {tmp_dir}/content.txt written by ollama::chat() —
-// uses --rawfile to avoid shell quoting of arbitrary content (markdown, quotes, newlines)
-add_assistant(raw_content) {
-    <\ "jq --rawfile c " tmp_dir "/content.txt '. += [\{role:\"assistant\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
-    raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-    n = #|raw_n$~~["\n":""]|
-    new_n = n + 1
-    <\ "printf '" new_n "' > " count_file \>
-}
+    get_msgs_file() { <~ msgs_file }
 
-// Reset conversation history
-clear() {
-    <\ "rm -f " msgs_file " " count_file \>
+    get_count() {
+        raw = <\ "cat " count_file " 2>/dev/null || echo 0" \>
+        <~ #|raw$~~["\n":""]|
+    }
+
+    // Initialize conversation with a system prompt and optional memory context.
+    // mem_ctx: content of ~/.ZethyCLI/memory.txt — injected after sys prompt if non-empty.
+    // G4: full_prompt sanitized before shell interpolation.
+    init(system_prompt, mem_ctx) {
+        full_prompt = system_prompt
+        ? (mem_ctx <> "") {
+            full_prompt = system_prompt $++ "\n\nMemory from previous sessions:\n" mem_ctx
+        }
+        safe = full_prompt$~~["'":"(APOS)"]
+        <\ "jq -n --arg c '" safe "' '[\{role:\"system\",content:$c}]' > " msgs_file \>
+        <\ "printf '1' > " count_file \>
+    }
+
+    // Append a user message
+    add_user(raw_content) {
+        safe = raw_content$~~["'":"(APOS)"]
+        <\ "jq --arg c '" safe "' '. += [\{role:\"user\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
+        raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
+        n = #|raw_n$~~["\n":""]|
+        new_n = n + 1
+        <\ "printf '" new_n "' > " count_file \>
+    }
+
+    // Append a user message from file content — avoids shell quoting of arbitrary
+    // content (G4 full mitigation via --rawfile, same pattern as add_assistant).
+    // label: display name shown to the model (usually the file path)
+    // content_file: path to the file whose content is sent
+    add_user_from_file(label, content_file) {
+        msg_file = tmp_dir $+ "/file_msg.txt"
+        <\ "\{ printf 'File: " label "\\n```\\n'; cat '" content_file "'; printf '\\n```'; \} > " msg_file \>
+        <\ "jq --rawfile c " msg_file " '. += [\{role:\"user\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
+        raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
+        n = #|raw_n$~~["\n":""]|
+        new_n = n + 1
+        <\ "printf '" new_n "' > " count_file \>
+    }
+
+    // Append an assistant message
+    // Reads content from {tmp_dir}/content.txt written by ollama::chat() —
+    // uses --rawfile to avoid shell quoting of arbitrary content (markdown, quotes, newlines)
+    add_assistant(raw_content) {
+        <\ "jq --rawfile c " tmp_dir "/content.txt '. += [\{role:\"assistant\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
+        raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
+        n = #|raw_n$~~["\n":""]|
+        new_n = n + 1
+        <\ "printf '" new_n "' > " count_file \>
+    }
+
+    // Reset conversation history
+    clear() {
+        <\ "rm -f " msgs_file " " count_file \>
+    }
 }

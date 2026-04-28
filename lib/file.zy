@@ -1,49 +1,49 @@
-# file
-
 // Generic file and directory operations via BashExec
 // GAP G3: needs std/io — read, write, exists, list, mkdir, delete
 
-#> {
-    read
-    write
-    exists
-    list_dir
-    make_dir
-    delete
-}
+# file {
+    #> {
+        read
+        write
+        exists
+        list_dir
+        make_dir
+        delete
+    }
 
-// Read file content as string
-read(path) {
-    result = <\ "cat " path \>
-    <~ result
-}
+    // Read file content as string
+    read(path) {
+        result = <\ "cat " path \>
+        <~ result
+    }
 
-// Write string content to file (overwrites)
-// GAP G4: single quotes in content break shell interpolation
-write(path, content) {
-    safe = content$~~["'":"(APOS)"]
-    _w = <\ "printf '%s' '" safe "' > " path \>
-}
+    // Write string content to file (overwrites)
+    // GAP G4: single quotes in content break shell interpolation
+    write(path, content) {
+        safe = content$~~["'":"(APOS)"]
+        _w = <\ "printf '%s' '" safe "' > " path \>
+    }
 
-// Check if file exists — returns #1 or #0
-exists(path) {
-    result = <\ "test -f " path " && echo si || echo no" \>
-    trimmed = result$~~["\n":""]
-    <~ trimmed == "si"
-}
+    // Check if file exists — returns #1 or #0
+    exists(path) {
+        result = <\ "test -f " path " && echo si || echo no" \>
+        trimmed = result$~~["\n":""]
+        <~ trimmed == "si"
+    }
 
-// List files in directory
-list_dir(dir) {
-    result = <\ "ls " dir \>
-    <~ result
-}
+    // List files in directory
+    list_dir(dir) {
+        result = <\ "ls " dir \>
+        <~ result
+    }
 
-// Create directory (and parents)
-make_dir(path) {
-    <\ "mkdir -p " path \>
-}
+    // Create directory (and parents)
+    make_dir(path) {
+        <\ "mkdir -p " path \>
+    }
 
-// Delete a file
-delete(path) {
-    <\ "rm -f " path \>
+    // Delete a file
+    delete(path) {
+        <\ "rm -f " path \>
+    }
 }
