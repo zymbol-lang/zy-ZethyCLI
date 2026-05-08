@@ -1,12 +1,12 @@
 // ZethyCLI — main entry point
 // Run from ZethyCLI/ directory: zymbol run main.zy
 
-<# ./lib/config   <= conf
-<# ./lib/ui       <= ui
-<# ./lib/history  <= hist
-<# ./lib/memory   <= memory
-<# ./lib/sessions <= sessions
-<# ./lib/ollama   <= ollama
+<# ./lib/config   : conf
+<# ./lib/ui       : ui
+<# ./lib/history  : hist
+<# ./lib/memory   : memory
+<# ./lib/sessions : sessions
+<# ./lib/ollama   : ollama
 
 // ── Prompt user to pick a valid model from `ollama list` ─────────────────
 pick_model() {
