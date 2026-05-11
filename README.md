@@ -3,6 +3,9 @@
 > A real-world AI chat CLI written entirely in Zymbol.
 > Primary goal: stress-test the language and map its real strengths and gaps.
 
+> **Validation project for Zymbol v0.0.3** — built to stress-test the language
+> at that milestone and document every friction point encountered in real development.
+
 ---
 
 ## What is ZethyCLI?
