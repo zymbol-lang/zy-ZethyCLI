@@ -1,5 +1,7 @@
 # ZethyCLI
 
+> **Revisado para v0.0.5 — 2026-05-12**
+
 > A real-world AI chat CLI written entirely in Zymbol.
 > Primary goal: stress-test the language and map its real strengths and gaps.
 

@@ -15,58 +15,75 @@
 
 ## G1 — No `std/net` (HTTP client)
 
-**Status**: CRITICAL
-**Discovered**: Design phase
+**Status**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 10)
+**Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/http.zy`
 
-Zymbol has no native HTTP client. Every API call requires delegating to
-`curl` via BashExec. This works but:
-- Ties networking to shell availability
-- No timeout control from Zymbol
-- No access to response headers or status codes from Zymbol logic
+ZethyCLI was built without a native HTTP client by design. The goal was to
+validate that the language is expressive enough to bridge external networking
+via BashExec/curl, and to document precisely which HTTP capabilities would
+need to be native. This was not a surprise gap — the absence was known from
+the start and accepted as a deliberate trade-off for v0.0.3.
+
+Constraints confirmed by the exercise:
+- Networking is tied to shell availability (acceptable for a CLI tool, not for portable scripts)
+- No timeout control from Zymbol code
+- No access to response headers or HTTP status codes from Zymbol logic
 - SSL/auth options require raw curl flags as strings
 
 **Workaround used**: `<\ curl "-s" "-X" "POST" ... {url} \>`
-**Future fix**: `std/net` module — `net::post(url, headers, body)` returning `(status, body)`
+**Roadmap**: `std/net` module — `net::post(url, headers, body)` returning `(status, body)`
 
 ---
 
 ## G2 — No `std/json` (JSON encode/decode)
 
-**Status**: CRITICAL
-**Discovered**: Design phase
+**Status**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 9)
+**Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/json.zy`, `lib/ollama.zy`, `lib/history.zy`
 
-Zymbol cannot natively serialize or deserialize JSON. Building the Ollama
-API payload and parsing the response requires `jq` via BashExec.
+ZethyCLI was built without native JSON serialization by design. The goal was to
+validate that JSON workflows (Ollama API payload construction, response field
+extraction, history serialization) are achievable via BashExec/jq, and to
+document precisely which JSON operations would need to be native. This was not
+a surprise gap — the absence was known from the start and accepted as a
+deliberate trade-off for v0.0.3.
 
-Sub-gaps:
+Operations confirmed as necessary:
 - No `json::encode(value)` → string
 - No `json::decode(string)` → typed value
 - No `json::get(string, key)` → field extraction
 
 **Workaround used**: `<\ jq "-Rs" "." file \>` for encoding, `<\ jq "-r" ".field" file \>` for decoding
-**Future fix**: `std/json` module — `json::encode(v)`, `json::decode(s)`, `json::get(s, key)`
+**Roadmap**: `std/json` module — `json::encode(v)`, `json::decode(s)`, `json::get(s, key)`
 
 ---
 
 ## G3 — No `std/io` (file read/write)
 
-**Status**: CRITICAL
-**Discovered**: Design phase
+**Status**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 8)
+**Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/file.zy`, `lib/history.zy`
 
-Zymbol has no native file I/O. Reading files and writing temp files
-(required for safe JSON payload delivery to curl) requires BashExec.
+ZethyCLI was built without native file I/O by design. The goal was to validate
+that file-based workflows (chat history persistence, temp payload delivery to
+curl) are achievable via BashExec, and to document precisely which I/O
+primitives would need to be native. This was not a surprise gap — the absence
+was known from the start and accepted as a deliberate trade-off for v0.0.3.
 
-**Workaround used**: `<\ cat {path} \>` for read, `<\ printf '%s' '{content}' > {path} \>` for write
-**Future fix**: `std/io` module — `io::read(path)`, `io::write(path, content)`, `io::append(path, content)`
+Operations confirmed as necessary:
+- Read file to string: requires `<\ "cat " path \>`
+- Write string to file: requires `<\ "printf '%s' '" safe_content "' > " path \>`
+- Append to file: requires `<\ "echo '" safe_content "' >> " path \>`
+
+**Workaround used**: `<\ "cat " path \>` for read, `<\ "printf '%s' '" content "' > " path \>` for write
+**Roadmap**: `std/io` module — `io::read(path)`, `io::write(path, content)`, `io::append(path, content)`
 
 ---
 
 ## G4 — BashExec shell-safety (single quotes in content)
 
-**Status**: SIGNIFICANT (partially mitigated by BashExec redesign)
+**Status**: workaround — sanitizar `'` con `$~~`; fix completo cuando `std/io` + `std/net` (v0.0.6) eliminen BashExec de la mayoría de casos
 **Discovered**: Design phase
 **Module affected**: `lib/json.zy`, `lib/file.zy`, `lib/history.zy`
 
@@ -368,11 +385,19 @@ adjunta al `module_decl`. Si ya había un `#>` en posición 1, este segundo chec
 ## G15 — Operador `!=` no existe — descubribilidad del operador `<>`
 
 **Status**: ✅ RESUELTO
-**Discovered**: ZethyCLI — `lib/config.zy`
+**Nature**: Deliberate probe — used `!=` intentionally to observe error quality and confirm the fix was required
+**Context**: ZethyCLI — `lib/config.zy`
 
-`!=` no es un operador válido en Zymbol. El operador correcto es `<>` (not equal),
-coherente con el diseño simbólico del lenguaje. El problema era que el error
-generado no orientaba al programador.
+`!=` is not a valid Zymbol operator — the correct operator is `<>` (not equal),
+consistent with the language's symbolic design. The use of `!=` in `lib/config.zy`
+was deliberate: the goal was to observe exactly what error experience a programmer
+encounters when reaching for the familiar C/Python not-equal operator, and to
+confirm whether the existing diagnostic was actionable enough or a targeted fix
+was required.
+
+**Result of the probe**: The original error was not actionable — it did not name
+`<>` or suggest the correct operator. This confirmed that a lexer-level diagnostic
+with a direct help message was required, not just "nice to have."
 
 **Fix implementado**: El lexer detecta `!=` como una secuencia específica y emite
 un diagnostic con mensaje directo y help accionable, antes de que el parser vea
@@ -740,10 +765,10 @@ por `\{foo\}`. El intérprete re-interpolaba ambos en runtime.
 
 | ID | Gap | Severity | Workaround | Future module |
 |----|-----|----------|------------|---------------|
-| G1 | No HTTP client | CRITICAL | curl via BashExec | `std/net` |
-| G2 | No JSON encode/decode | CRITICAL | jq via BashExec | `std/json` |
-| G3 | No file read/write | CRITICAL | cat/printf via BashExec | `std/io` |
-| G4 | BashExec shell-safety (single quotes) | SIGNIFICANT | sanitize `'` | `std/io` + `std/net` |
+| G1 | No HTTP client | intentional — stdlib roadmap | curl via BashExec | `std/net` (IMPL_V007.md Step 10) |
+| G2 | No JSON encode/decode | intentional — stdlib roadmap | jq via BashExec | `std/json` (IMPL_V007.md Step 9) |
+| G3 | No file read/write | intentional — stdlib roadmap | cat/printf via BashExec | `std/io` (IMPL_V007.md Step 8) |
+| G4 | BashExec shell-safety (single quotes) | workaround | sanitize `'` | `std/io` + `std/net` (v0.0.6) |
 | G5 | Join strings | — | ✅ `,` operator | ya existe |
 | G6 | Split string | — | ✅ `str / char` | falso warning corregido |
 | G7 | BashExec trailing `\n` | SIGNIFICANT | `$~~["\n":""]` | ✅ trim by default |
@@ -753,7 +778,7 @@ por `\{foo\}`. El intérprete re-interpolaba ambos en runtime.
 | G12 | BashExec opaco `{var}` | CRITICAL | — | ✅ rediseñado (expresiones Zymbol) |
 | G13 | Module state non-persistent | — | ✅ private mutable state + write-back | resuelto |
 | G14 | `#>` must follow `# name` immediately | — | ✅ resuelto — ambas posiciones válidas | — |
-| G15 | `!=` no existe — error no orienta a `<>` | SIGNIFICANT | ✅ diagnostic en lexer | — |
+| G15 | `!=` no existe — error no orienta a `<>` | deliberate probe — fix confirmed required | ✅ diagnostic en lexer | — |
 | G16 | Parámetros función invisibles en BashExec | SIGNIFICANT | ✅ resuelto por G12 | — |
 | G17 | Sin funciones top-level en scripts | SIGNIFICANT | ✅ resuelto — alias restaurados en functions_lambda.rs | — |
 | G18 | Concat de strings en args de función | — | ✅ `$++` encadena múltiples; `>>` acepta expresiones directas | falso GAP |

@@ -1,5 +1,7 @@
 # ZethyCLI — Ideas de Implementación para Zymbol
 
+> **Revisado para v0.0.5 — 2026-05-12**
+
 > Características nuevas identificadas durante el desarrollo de ZethyCLI.
 > No son errores — son capacidades que harían al lenguaje más expresivo y poderoso.
 > Prioridad: Alta / Media / Baja

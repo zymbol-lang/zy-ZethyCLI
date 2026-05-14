@@ -36,7 +36,7 @@ bar() { <~ 42 }
 **Severidad**: SIGNIFICATIVA
 **Descubierto**: Phase 1 de ZethyCLI
 **Archivo afectado**: `main.zy`
-**Estado**: ✅ POR DISEÑO — documentado en `interpreter/MANUAL.md` § 4
+**Estado**: ✅ POR DISEÑO — documentado en `interpreter/REFERENCE.md` §20
 
 Una variable `_nombre` declarada en un scope externo no puede ser reasignada desde un bloque `? { }` o `@ { }` interno. El error indica "strictly local to declaration block".
 
@@ -63,7 +63,7 @@ args = ""
 ```
 
 **Aplicado en**: `main.zy` líneas 37–38 (workaround ya en producción).
-**Documentado en**: `interpreter/MANUAL.md` § 4 — subsección "Underscore Variables (`_name`)".
+**Documentado en**: `interpreter/REFERENCE.md` §20 — subsección "Underscore Variables (`_name`)".
 
 ---
 

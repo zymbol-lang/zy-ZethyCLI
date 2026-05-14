@@ -1,12 +1,12 @@
 // ZethyCLI — main entry point
 // Run from ZethyCLI/ directory: zymbol run main.zy
 
-<# ./lib/config   : conf
-<# ./lib/ui       : ui
-<# ./lib/history  : hist
-<# ./lib/memory   : memory
-<# ./lib/sessions : sessions
-<# ./lib/ollama   : ollama
+<# ./lib/config   => conf
+<# ./lib/ui       => ui
+<# ./lib/history  => hist
+<# ./lib/memory   => memory
+<# ./lib/sessions => sessions
+<# ./lib/ollama   => ollama
 
 // ── Prompt user to pick a valid model from `ollama list` ─────────────────
 pick_model() {
@@ -100,7 +100,7 @@ running = ollama::is_running()
             args = args$~~["\n":""]
 
             ?? cmd {
-                "/exit" : {
+                "/exit" => {
                     turns = hist::get_count()
                     ? (turns > 2) {
                         ui::show_info("Summarizing session...")
@@ -112,20 +112,20 @@ running = ollama::is_running()
                     @!
                 }
 
-                "/help" : {
+                "/help" => {
                     ui::show_help()
                 }
 
-                "/clear" : {
+                "/clear" => {
                     hist::clear()
                     hist::init(sys_prompt, mem_ctx)
                     ui::show_info("Conversation cleared. (memory preserved — /forget to erase)")
                 }
 
                 // /mode controls only the think flag — model is unchanged
-                "/mode" : {
+                "/mode" => {
                     ?? args {
-                        "think" : {
+                        "think" => {
                             ok = ollama::supports_think(model)
                             ? ok {
                                 think = #1
@@ -138,20 +138,20 @@ running = ollama::is_running()
                                 ui::show_error(warn)
                             }
                         }
-                        "fast" : {
+                        "fast" => {
                             think = #0
                             mode  = "fast"
                             host  = ollama::get_host()
                             conf::save(model, mode, think, host, tmp_dir)
                             ui::show_info("Think mode OFF")
                         }
-                        _ : {
+                        _ => {
                             ui::show_error("Usage: /mode fast|think")
                         }
                     }
                 }
 
-                "/model" : {
+                "/model" => {
                     ? (args == "") {
                         raw_list = <\ "ollama list" \>
                         >> raw_list ¶
@@ -181,7 +181,7 @@ running = ollama::is_running()
                     }
                 }
 
-                "/host" : {
+                "/host" => {
                     ? (args == "") {
                         ui::show_error("Usage: /host <addr>  e.g. /host 192.168.1.1 or /host 192.168.1.1:11434")
                     } _ {
@@ -198,23 +198,23 @@ running = ollama::is_running()
                     }
                 }
 
-                "/models" : {
+                "/models" => {
                     raw_list = <\ "ollama list" \>
                     >> raw_list ¶
                 }
 
-                "/info" : {
+                "/info" => {
                     turns = hist::get_count()
                     host  = ollama::get_host()
-                    >> "  model   : " model ¶
-                    >> "  mode    : " mode ¶
-                    >> "  think   : " think ¶
-                    >> "  host    : " host ¶
-                    >> "  tmp_dir : " tmp_dir ¶
-                    >> "  turns   : " turns ¶
+                    >> "  model   => " model ¶
+                    >> "  mode    => " mode ¶
+                    >> "  think   => " think ¶
+                    >> "  host    => " host ¶
+                    >> "  tmp_dir => " tmp_dir ¶
+                    >> "  turns   => " turns ¶
                 }
 
-                "/file" : {
+                "/file" => {
                     ? (args == "") {
                         ui::show_error("Usage: /file <path>")
                     } _ {
@@ -237,7 +237,7 @@ running = ollama::is_running()
                     }
                 }
 
-                "/remember" : {
+                "/remember" => {
                     ? (args == "") {
                         ui::show_error("Usage: /remember <fact>")
                     } _ {
@@ -246,7 +246,7 @@ running = ollama::is_running()
                     }
                 }
 
-                "/memory" : {
+                "/memory" => {
                     ctx = memory::get_context()
                     ? (ctx == "") {
                         ui::show_info("No memory saved yet. Use /remember <fact> to add.")
@@ -257,12 +257,12 @@ running = ollama::is_running()
                     }
                 }
 
-                "/forget" : {
+                "/forget" => {
                     memory::clear()
                     ui::show_info("Memory cleared.")
                 }
 
-                "/history" : {
+                "/history" => {
                     listing = sessions::list()
                     ? (listing$~~["\n":""] == "") {
                         ui::show_info("No sessions archived yet.")
@@ -272,7 +272,7 @@ running = ollama::is_running()
                     }
                 }
 
-                "/reset" : {
+                "/reset" => {
                     <\ "rm -f " tmp_dir "/*.json " tmp_dir "/*.txt " tmp_dir "/*.err" \>
                     <\ "rm -f ~/.ZethyCLI/ZethyCLI.conf" \>
                     model = pick_model()
@@ -285,7 +285,7 @@ running = ollama::is_running()
                     ui::show_info("Session reset.")
                 }
 
-                _ : {
+                _ => {
                     ui::show_error("Unknown command — type /help")
                 }
             }

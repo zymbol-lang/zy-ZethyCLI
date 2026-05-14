@@ -6,8 +6,8 @@
 // host_base, tmp_dir are private mutable state — updated by setters, read directly in fns
 
 # ollama {
-    <# ./http : http
-    <# ./json : json
+    <# ./http => http
+    <# ./json => json
 
     #> {
         chat
