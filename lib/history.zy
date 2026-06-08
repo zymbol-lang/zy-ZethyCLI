@@ -1,11 +1,13 @@
 // Conversation history — file-based state in {tmp_dir}/msgs.json
-// G2 workaround: JSON manipulation via jq
-// G3 workaround: File I/O via BashExec
-// File-based storage chosen over module state (G13) because history
-// must survive program restarts and is shared across module boundaries.
-// tmp_dir is private mutable state — set via set_tmp_dir() at startup.
+// Migrated to the v0.0.7 stdlib: JSON via std/json, file I/O via std/io.
+// File-based storage is kept (over module state, G13) because history must
+// survive program restarts. The old jq-append + shell-quoting workarounds are
+// gone: messages are passed as plain strings and json::encode handles escaping.
 
 # history {
+    <# std/io   => io
+    <# std/json => json
+
     #> {
         init
         add_user
@@ -18,74 +20,63 @@
     }
 
     // Private mutable paths — updated by set_tmp_dir()
-    tmp_dir    = "/tmp/ZethyCLI"
     msgs_file  = "/tmp/ZethyCLI/msgs.json"
     count_file = "/tmp/ZethyCLI/count.txt"
 
-    // Update temp directory and rebuild derived paths
     set_tmp_dir(dir) {
-        tmp_dir    = dir
-        msgs_file  = dir $+ "/msgs.json"
-        count_file = dir $+ "/count.txt"
+        msgs_file  = dir "/msgs.json"
+        count_file = dir "/count.txt"
     }
 
     get_msgs_file() { <~ msgs_file }
 
     get_count() {
-        raw = <\ "cat " count_file " 2>/dev/null || echo 0" \>
+        raw = io::read(count_file)
+        ? raw$! { <~ 0 }
         <~ #|raw$~~["\n":""]|
     }
 
+    // Append a {role, content} message and bump the turn count. Private helper.
+    append_msg(role, content) {
+        raw   = io::read(msgs_file)
+        msgs  = json::decode(raw)
+        msgs  = msgs$+ (role: role, content: content)
+        _w    = io::write(msgs_file, json::encode(msgs))
+        n     = get_count()
+        new_n = n + 1
+        cs    = "" new_n
+        _c    = io::write(count_file, cs)
+    }
+
     // Initialize conversation with a system prompt and optional memory context.
-    // mem_ctx: content of ~/.ZethyCLI/memory.txt — injected after sys prompt if non-empty.
-    // G4: full_prompt sanitized before shell interpolation.
     init(system_prompt, mem_ctx) {
         full_prompt = system_prompt
         ? (mem_ctx <> "") {
-            full_prompt = system_prompt $++ "\n\nMemory from previous sessions:\n" mem_ctx
+            full_prompt = system_prompt "\n\nMemory from previous sessions:\n" mem_ctx
         }
-        safe = full_prompt$~~["'":"(APOS)"]
-        <\ "jq -n --arg c '" safe "' '[\{role:\"system\",content:$c}]' > " msgs_file \>
-        <\ "printf '1' > " count_file \>
+        msgs = [ (role: "system", content: full_prompt) ]
+        _w = io::write(msgs_file, json::encode(msgs))
+        _c = io::write(count_file, "1")
     }
 
-    // Append a user message
     add_user(raw_content) {
-        safe = raw_content$~~["'":"(APOS)"]
-        <\ "jq --arg c '" safe "' '. += [\{role:\"user\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
-        raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-        n = #|raw_n$~~["\n":""]|
-        new_n = n + 1
-        <\ "printf '" new_n "' > " count_file \>
+        _r = append_msg("user", raw_content)
     }
 
-    // Append a user message from file content — avoids shell quoting of arbitrary
-    // content (G4 full mitigation via --rawfile, same pattern as add_assistant).
-    // label: display name shown to the model (usually the file path)
-    // content_file: path to the file whose content is sent
+    // Append a user message built from a file's content (for /file).
     add_user_from_file(label, content_file) {
-        msg_file = tmp_dir $+ "/file_msg.txt"
-        <\ "\{ printf 'File: " label "\\n```\\n'; cat '" content_file "'; printf '\\n```'; \} > " msg_file \>
-        <\ "jq --rawfile c " msg_file " '. += [\{role:\"user\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
-        raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-        n = #|raw_n$~~["\n":""]|
-        new_n = n + 1
-        <\ "printf '" new_n "' > " count_file \>
+        file_content = io::read(content_file)
+        ? file_content$! { file_content = "(could not read file)" }
+        body = "File: " label "\n```\n" file_content "\n```"
+        _r = append_msg("user", body)
     }
 
-    // Append an assistant message
-    // Reads content from {tmp_dir}/content.txt written by ollama::chat() —
-    // uses --rawfile to avoid shell quoting of arbitrary content (markdown, quotes, newlines)
     add_assistant(raw_content) {
-        <\ "jq --rawfile c " tmp_dir "/content.txt '. += [\{role:\"assistant\",content:$c}]' " msgs_file " > " tmp_dir "/tmp.json && mv " tmp_dir "/tmp.json " msgs_file \>
-        raw_n = <\ "cat " count_file " 2>/dev/null || echo 0" \>
-        n = #|raw_n$~~["\n":""]|
-        new_n = n + 1
-        <\ "printf '" new_n "' > " count_file \>
+        _r = append_msg("assistant", raw_content)
     }
 
-    // Reset conversation history
     clear() {
-        <\ "rm -f " msgs_file " " count_file \>
+        _m = io::delete(msgs_file)
+        _c = io::delete(count_file)
     }
 }

@@ -1,25 +1,27 @@
 # ZethyCLI
 
-> **Revisado para v0.0.5 — 2026-05-12**
+> **Updated for Zymbol v0.0.7 — 2026-06-08**
 
 > A real-world AI chat CLI written entirely in Zymbol.
 > Primary goal: stress-test the language and map its real strengths and gaps.
 
-> **Validation project for Zymbol v0.0.3** — built to stress-test the language
-> at that milestone and document every friction point encountered in real development.
+> **Validation project for Zymbol.** Built across v0.0.3–v0.0.7 to push the
+> language into territory where it had gaps — and to drive the standard library
+> that filled them.
 
 ---
 
 ## What is ZethyCLI?
 
-ZethyCLI is a multi-turn conversational AI interface for [Ollama](https://ollama.com)
-built exclusively in the [Zymbol programming language](https://zymbol.dev). It
-connects to a local or remote Ollama instance, manages conversation history, and
-provides a REPL-style interface for chatting with any installed model.
+ZethyCLI is a multi-turn conversational AI REPL written exclusively in the
+[Zymbol programming language](https://zymbol.dev). It talks to **either** of two
+providers, selectable at runtime:
 
-It is **not** a showcase of what Zymbol can do easily — it is a deliberate attempt
-to push the language into territory where it has gaps, and to document every
-friction point along the way.
+- **`ollama`** — a local [Ollama](https://ollama.com) instance (models on your machine)
+- **`gemini`** — Google's Gemini web API (cloud, needs an API key)
+
+It manages conversation history, cross-session memory, and session archives, and
+provides slash-commands for everything.
 
 ---
 
@@ -27,25 +29,25 @@ friction point along the way.
 
 ZethyCLI is a **language validation instrument**.
 
-Zymbol is a keyword-free symbolic programming language. Its design is intentionally
-minimal — the standard library is still being built, and the language itself is still
-evolving. ZethyCLI was created to answer a concrete question:
+The methodology was: build a real feature in pure Zymbol → hit the wall where the
+standard library was missing → work around it with the `<\ BashExec \>` escape hatch
+→ document the gap → and use that to prioritize the stdlib roadmap.
 
-> *What happens when you build something real in Zymbol, with no shortcuts,
-> no Python bridges, and no external runtime helpers?*
+That loop **worked**: the three biggest gaps it documented — `std/net` (G1),
+`std/json` (G2), and `std/io` (G3) — were implemented in Zymbol **v0.0.7**, and
+ZethyCLI has now been **migrated off the workarounds onto the real standard
+library**. The `curl`/`jq`/`cat`/`printf` plumbing is gone; HTTP, JSON, and file
+I/O are native.
 
-The methodology:
+Remaining `<\ \>` calls are only for legitimate, non-gap cases: the `ollama` CLI
+(`command -v`, `ollama list`), resolving `$HOME` (`printenv HOME` — `std/io` does
+not expand `~`), and timestamps (`date`).
 
-1. **Build** — implement the feature in pure Zymbol
-2. **Hit the wall** — identify what is missing or broken
-3. **Workaround** — find the BashExec escape hatch solution
-4. **Document** — record the gap or bug with full reproduction context
-5. **Repeat** — continue until the feature works
-
-Every workaround in the codebase (`jq` for JSON, `curl` for HTTP, `cat`/`printf` for
-file I/O) represents a gap in Zymbol's standard library. Every bug note in the source
-comments represents a real interpreter or parser failure that was encountered and
-either fixed or worked around.
+> **Requires the Zymbol v0.0.7 interpreter** (with `std/net`, `std/json`, `std/io`
+> and `net` header support). Build/install it from `interpreter/`:
+> ```bash
+> bash interpreter/install-zymbol.sh   # symlinks the v0.0.7 build into /usr/bin
+> ```
 
 ---
 
@@ -56,10 +58,34 @@ either fixed or worked around.
 zymbol run main.zy
 ```
 
-**Requirements**: `ollama` running locally or on a reachable host, `jq`, `curl`.
+**Requirements**
 
-On first run, ZethyCLI shows the list of installed models and asks you to pick one.
-The selection is saved to `~/.ZethyCLI/ZethyCLI.conf`.
+- Zymbol **v0.0.7** (`zymbol -V`)
+- For the **ollama** provider: a running Ollama daemon + at least one model pulled
+- For the **gemini** provider: a free API key from <https://aistudio.google.com/apikey>
+
+No `jq` / `curl` needed anymore — those were the old workarounds.
+
+On first run (no config) ZethyCLI defaults to the **ollama** provider and asks you
+to pick from `ollama list`. The choice is saved to `~/.ZethyCLI/ZethyCLI.conf`.
+
+---
+
+## Choosing local vs cloud
+
+The provider and model are two separate settings (both persisted):
+
+```text
+# Local (Ollama)
+/provider ollama
+/model gemma3:4b
+
+# Cloud (Gemini)
+/provider gemini
+/key YOUR_API_KEY        # gemini-flash-latest is the default model
+```
+
+The banner and `/info` always show the active provider.
 
 ---
 
@@ -67,21 +93,24 @@ The selection is saved to `~/.ZethyCLI/ZethyCLI.conf`.
 
 | Command | Effect | Saved |
 |---------|--------|-------|
-| `/model <name>` | Switch to any installed model | ✅ |
-| `/model` | Show `ollama list` | — |
-| `/mode think` | Enable reasoning mode (verified via `/api/show`) | ✅ |
+| `/provider <ollama\|gemini>` | Switch provider (local vs cloud) | ✅ |
+| `/key <api_key>` | Set the API key for the cloud provider | ✅ |
+| `/model <name>` | Switch model (validated against `ollama list` for ollama) | ✅ |
+| `/model` | Show `ollama list` (ollama) / current model (gemini) | — |
+| `/mode think` | Enable reasoning mode (ollama: verified via `/api/show`) | ✅ |
 | `/mode fast` | Disable reasoning mode | ✅ |
-| `/host <addr>` | Change Ollama host (`192.168.1.1`, `192.168.1.1:9999`) | ✅ |
-| `/models` | List installed models (`ollama list`) | — |
-| `/info` | Show current model, mode, host, tmp_dir, turn count | — |
-| `/clear` | Reset conversation history | — |
-| `/reset` | Clear all temp files, reset config, re-select model | — |
+| `/host <addr>` | Change Ollama host (ollama only) | ✅ |
+| `/models` | List installed Ollama models | — |
+| `/info` | Show provider, model, mode, host, tmp_dir, turn count | — |
+| `/file <path>` | Send a file's content to the model as context | — |
+| `/remember <fact>` | Save a fact to persistent memory | — |
+| `/memory` | Show saved memory | — |
+| `/forget` | Clear persistent memory | — |
+| `/history` | List archived sessions with message counts | — |
+| `/clear` | Reset conversation history (memory preserved) | — |
+| `/reset` | Clear temp files + config, restart | — |
 | `/help` | Show command list | — |
-| `/exit` | Quit | — |
-
-**Think mode** is validated at runtime: `/mode think` queries `/api/show` and checks
-the model's `capabilities` field. If `"thinking"` is not listed, think mode is
-refused with a warning. Switching models while think is active also triggers this check.
+| `/exit` | Quit (auto-saves a session summary to memory) | — |
 
 ---
 
@@ -91,15 +120,18 @@ Persistent config at `~/.ZethyCLI/ZethyCLI.conf` (JSON):
 
 ```json
 {
-  "model":   "gemma4:latest",
-  "mode":    "fast",
-  "think":   false,
-  "host":    "http://localhost:11434",
-  "tmp_dir": "/tmp/ZethyCLI"
+  "model":    "gemma3:4b",
+  "mode":     "fast",
+  "think":    false,
+  "host":     "http://localhost:11434",
+  "tmp_dir":  "/tmp/ZethyCLI",
+  "provider": "ollama",
+  "api_key":  ""
 }
 ```
 
-`tmp_dir` is only applied at startup — edit the file and restart to change it.
+`provider` selects local (`ollama`) vs cloud (`gemini`); `api_key` is used by the
+cloud provider. `tmp_dir` is applied only at startup.
 
 ---
 
@@ -107,132 +139,68 @@ Persistent config at `~/.ZethyCLI/ZethyCLI.conf` (JSON):
 
 ```
 ZethyCLI/
-  main.zy          Entry point — REPL loop, command dispatcher, startup
+  main.zy          Entry point — REPL, command dispatch, provider routing
   lib/
-    config.zy      Persistent config — ~/.ZethyCLI/ZethyCLI.conf (jq + BashExec)
-    ui.zy          Terminal output — pure Zymbol, no BashExec
-    history.zy     Conversation state — file-based JSON, /tmp/ZethyCLI/
-    json.zy        JSON encode/decode — jq via BashExec (G2 workaround)
-    http.zy        HTTP client — curl via BashExec (G1 workaround)
-    ollama.zy      Ollama API client — imports http + json
-  README.md        This file
-  DESIGN.md        Architecture, module designs, BashExec patterns
-  BUGS.md          Runtime bugs found and fixed (or open)
-  GAPS.md          Language gaps found during development
+    config.zy      Persistent config (~/.ZethyCLI/ZethyCLI.conf)
+    ui.zy          Terminal output — pure Zymbol
+    history.zy     Conversation state — std/io + std/json
+    memory.zy      Cross-session memory — std/io
+    sessions.zy    Per-run session archive — std/io + std/json
+    ollama.zy      Local provider — std/net + std/json + std/io
+    gemini.zy      Cloud provider — std/net (auth header) + std/json + std/io
+  README.md · DESIGN.md · BUGS.md · GAPS.md
 ```
 
-No external Python. No shell scripts. All logic is Zymbol — standard library gaps
-are bridged exclusively through `<\ BashExec \>`.
+Both providers expose the same `chat` / `summarize` contract, so `main.zy` routes
+to either one through a single `do_chat` / `do_summarize` dispatch.
+
+> The old workaround modules `lib/http.zy` (curl), `lib/json.zy` (jq), and
+> `lib/file.zy` (cat/printf) were **removed** in the v0.0.7 migration.
 
 ---
 
 ## Language Findings
 
-### What Works Well
+### Standard library gaps — now resolved (v0.0.7)
 
-**`>>` juxtaposition with `¶`** — terminal output is remarkably readable.
-`ui.zy` contains zero helper functions and still produces clean box-drawing output:
-```zymbol
->> "  [" model "] › " text ¶
-```
+| Gap | Was | Now |
+|-----|-----|-----|
+| **G1** `std/net` (HTTP) | `curl` via BashExec (`lib/http.zy`) | ✅ `net::get` / `net::post_json` (with optional auth headers) |
+| **G2** `std/json` | `jq` via BashExec (`lib/json.zy`) | ✅ `json::encode` / `json::decode` (object↔NamedTuple) |
+| **G3** `std/io` | `cat`/`printf` via BashExec (`lib/file.zy`) | ✅ `io::read` / `write` / `append` / `list` / `delete` |
+| **G4** shell-quoting of content | sanitize `'`→`(APOS)` | ✅ mostly gone — content no longer interpolated into shell strings |
 
-**`??` match** — the command dispatcher is expressive and flat. No nested if/else chains.
+Driving these three modules into the language and then migrating onto them is the
+project's headline result. See `GAPS.md` for the full log.
 
-**Module private mutable state (G13)** — `host_base` and `tmp_dir` in `ollama.zy`
-as singleton state, changed via `set_host()` / `set_tmp_dir()`, work exactly as
-expected. The module-as-toolbox design is sound.
+### What works well
 
-**`$~~` `$??` `$[..]` `$#`** — string operators are expressive once learned.
+- **`>>` juxtaposition with `¶`** — terminal UI is remarkably readable.
+- **`??` match** — flat, expressive command dispatcher.
+- **Module private mutable state** — `host_base`, provider config, session file as
+  singleton state via setters works as expected.
+- **String operators** `$~~` `$??` `$[..]` `$#` — expressive once learned.
+- **Soft error values** — `std/net` returns failures as `Value::Error`, checked with
+  `$!`, so a dropped connection or bad key never crashes the REPL.
 
-**BashExec as escape hatch** — pragmatic and powerful. The entire project would be
-impossible without it. This validates the design decision.
+### Still-open friction
 
----
+- **Concat inside function arguments** — juxtaposition concatenation is rejected as a
+  function-call argument; you must build the string in a variable first
+  (`url = base model; net::get(url)`).
+- **No safe field access on decoded JSON** — accessing a missing NamedTuple field
+  errors; `config.zy` is deliberately kept on `jq` for its tolerant `// empty` defaults.
+- **Module-level vars must be literals** — can't init from an expression/BashExec at
+  module top level (resolve `$HOME` in a per-call helper instead).
 
-### Bugs Found
-
-#### BUG-07 — `}}` produces two `}` (asymmetry with `{{`)
-
-`{{` in a Zymbol string escapes to `{`. But `}}` is **not** an escape — it produces
-two literal `}` characters. The asymmetry caused a silent failure in `config.zy`:
-the jq filter received `...tmp_dir}}` (invalid), failed silently, and the redirect
-`> ~/.ZethyCLI/ZethyCLI.conf` created an empty file. The model was never saved between runs.
-
-This is hard to debug: BashExec does not expose stderr to Zymbol code.
-
-**Status**: Open. See `BUGS.md § BUG-07`.
-
----
-
-### Gaps Found
-
-#### G15 — `!=` does not exist, error message gives no hint
-
-`!=` is not a valid Zymbol operator. The parser misidentifies `!` as the start of
-the `!?` safe-access operator, generating a misleading error that never mentions `<>`
-(the correct not-equal operator). Every programmer coming from any other language will
-hit this on their first conditional with inequality.
-
-**Status**: Open. See `GAPS.md § G15`.
-
-#### G16 — Function parameters invisible in BashExec without local copy
-
-Parameters of a function are not accessible in `<\ \>` BashExec expressions unless
-explicitly copied to a local body variable first. This is a consequence of the
-write-back mechanism (G13), but it is completely undocumented and causes silent
-failures. The pattern repeats in every module that uses BashExec:
-
-```zymbol
-chat(model, msgs_file) {
-    req_model = model      // mandatory copy — params not visible in BashExec
-    req_msgs  = msgs_file  // mandatory copy
-    <\ "curl ... " req_model " ... " req_msgs \>
-}
-```
-
-**Status**: Open. See `GAPS.md § G16`.
-
-#### G17 — No top-level functions in script files
-
-Script files (without `# module_name` header) cannot define reusable functions.
-This forced the model-selection picker to be duplicated verbatim in two places
-in `main.zy` (startup and `/reset` handler).
-
-**Status**: Open. See `GAPS.md § G17`.
-
-#### G18 — String concatenation inside function arguments
-
-The `,` join operator is ambiguous with the argument separator in function call
-context. `$++` (string builder) requires a base variable as first operand and
-does not work inline. A temporary variable is always required:
-
-```zymbol
-warn = "Model " $++ model " does not support think mode"
-ui::show_error(warn)   // cannot inline the concat in the argument
-```
-
-**Status**: Open. See `GAPS.md § G18`.
-
----
-
-### Critical Missing Standard Library (BashExec workarounds in use)
-
-| Missing | Workaround | Module |
-|---------|------------|--------|
-| `std/net` — HTTP client | `curl` via BashExec | `lib/http.zy` |
-| `std/json` — encode/decode | `jq` via BashExec | `lib/json.zy` |
-| `std/io` — file read/write | `cat` / `printf` via BashExec | `lib/history.zy` |
-
-These three gaps (G1, G2, G3) account for roughly 80% of the BashExec usage in the
-project. Once `std/net`, `std/json`, and `std/io` exist, the `lib/http.zy`,
-`lib/json.zy` modules and most of `lib/history.zy` can be replaced with native Zymbol.
+See `GAPS.md` and `BUGS.md` for the complete, versioned findings.
 
 ---
 
 ## See Also
 
-- `DESIGN.md` — architecture decisions, module designs, BashExec patterns
-- `BUGS.md` — confirmed runtime bugs with reproduction steps and fix notes
-- `GAPS.md` — language gaps with severity, workarounds, and fix proposals
-- `interpreter/MANUAL.md` — authoritative Zymbol language reference
-- `interpreter/ROADMAP.md` — planned features including `std/net`, `std/json`, `std/io`
+- `DESIGN.md` — architecture decisions and module designs
+- `BUGS.md` — confirmed runtime bugs with reproduction steps
+- `GAPS.md` — language gaps (G1–G16) with status and fixes
+- `interpreter/GUIDE.md` — authoritative Zymbol language reference
+- `interpreter/IMPL_V007.md` — the v0.0.7 stdlib that filled G1/G2/G3

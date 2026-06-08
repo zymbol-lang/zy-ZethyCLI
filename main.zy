@@ -1,5 +1,9 @@
 // ZethyCLI — main entry point
 // Run from ZethyCLI/ directory: zymbol run main.zy
+//
+// Two providers, selectable at runtime (saved to config):
+//   ollama  — local models via the Ollama daemon
+//   gemini  — Google Gemini web API (needs an api_key)
 
 <# ./lib/config   => conf
 <# ./lib/ui       => ui
@@ -7,6 +11,23 @@
 <# ./lib/memory   => memory
 <# ./lib/sessions => sessions
 <# ./lib/ollama   => ollama
+<# ./lib/gemini   => gemini
+
+// ── Provider dispatch ───────────────────────────────────────────────────────
+// One chat/summarize entry point that routes to the active provider.
+do_chat(provider, model, msgs_file, think) {
+    ? (provider == "gemini") {
+        <~ gemini::chat(model, msgs_file, think)
+    }
+    <~ ollama::chat(model, msgs_file, think)
+}
+
+do_summarize(provider, model, msgs_file) {
+    ? (provider == "gemini") {
+        <~ gemini::summarize(model, msgs_file)
+    }
+    <~ ollama::summarize(model, msgs_file)
+}
 
 // ── Prompt user to pick a valid model from `ollama list` ─────────────────
 pick_model() {
@@ -24,46 +45,65 @@ pick_model() {
 
 // ── Load persistent config ────────────────────────────────────────────────
 conf::load()
-mode    = conf::get_mode()
-model   = conf::get_model()
-think   = conf::get_think()
-tmp_dir = conf::get_tmp_dir()
+mode     = conf::get_mode()
+model    = conf::get_model()
+think    = conf::get_think()
+tmp_dir  = conf::get_tmp_dir()
+provider = conf::get_provider()
+api_key  = conf::get_api_key()
 
 // ── Apply config to modules ───────────────────────────────────────────────
 ollama::set_host(conf::get_host())
-ollama::set_tmp_dir(tmp_dir)
+gemini::set_api_key(api_key)
 hist::set_tmp_dir(tmp_dir)
-sessions::set_tmp_dir(tmp_dir)
 
 // ── Startup ────────────────────────────────────────────────────────────────
 sys_prompt = "You are ZethyCLI, a helpful AI assistant built to test the Zymbol programming language. Be concise and clear."
 
 ui::banner()
 
-// ── Verify ollama binary is available ─────────────────────────────────────
-? (ollama::is_installed() == #0) {
-    ui::show_error("ollama not found — install it first: https://ollama.com")
-    @!
+// ── Decide whether we are ready to chat (provider-dependent) ───────────────
+ready = #0
+
+? (provider == "gemini") {
+    ? (model == "") { model = "gemini-flash-latest" }
+    gemini::set_model(model)
+    ui::show_info("Provider: Gemini (web)")
+    ui::show_mode(mode, model)
+    ? (api_key == "") {
+        ui::show_info("No API key set yet — add one with /key <KEY>")
+    }
+    ready = #1
+} _ {
+    // ── Ollama (local) ────────────────────────────────────────────────
+    ? (ollama::is_installed() == #0) {
+        ui::show_error("ollama not found — install it first: https://ollama.com")
+        ui::show_info("Or switch to the web provider: /provider gemini")
+    } _ {
+        ? (ollama::is_running()) {
+            // First-run / empty-config model picker
+            ? (model == "") {
+                ui::show_info("First run — no model configured.")
+                >> ¶
+                model = pick_model()
+                mode  = "fast"
+                think = #0
+                host  = ollama::get_host()
+                conf::save(model, mode, think, host, tmp_dir)
+                ui::show_info("Model saved to ~/.ZethyCLI/ZethyCLI.conf")
+            }
+            ui::show_info("Ollama connected.")
+            ui::show_mode(mode, model)
+            ready = #1
+        } _ {
+            host = ollama::get_host()
+            ui::show_error("Ollama not reachable at " , host)
+            ui::show_info("Start Ollama with: ollama serve  (or: /provider gemini)")
+        }
+    }
 }
 
-running = ollama::is_running()
-
-? running {
-
-    // ── First-run / empty-config model picker ─────────────────────────
-    ? (model == "") {
-        ui::show_info("First run — no model configured.")
-        >> ¶
-        model = pick_model()
-        mode  = "fast"
-        think = #0
-        host  = ollama::get_host()
-        conf::save(model, mode, think, host, tmp_dir)
-        ui::show_info("Model saved to ~/.ZethyCLI/ZethyCLI.conf")
-    }
-
-    ui::show_info("Ollama connected.")
-    ui::show_mode(mode, model)
+? ready {
     mem_ctx = memory::get_context()
     hist::init(sys_prompt, mem_ctx)
     sessions::start()
@@ -104,8 +144,8 @@ running = ollama::is_running()
                     turns = hist::get_count()
                     ? (turns > 2) {
                         ui::show_info("Summarizing session...")
-                        sum_file = ollama::summarize(model, hist::get_msgs_file())
-                        memory::save_summary(sum_file)
+                        sum_text = do_summarize(provider, model, hist::get_msgs_file())
+                        memory::save_summary(sum_text)
                         ui::show_info("Session summary saved.")
                     }
                     ui::show_info("Goodbye.")
@@ -114,6 +154,48 @@ running = ollama::is_running()
 
                 "/help" => {
                     ui::show_help()
+                }
+
+                // ── Provider selection ───────────────────────────────────
+                "/provider" => {
+                    ?? args {
+                        "gemini" => {
+                            provider = "gemini"
+                            conf::set_provider("gemini")
+                            model = "gemini-flash-latest"
+                            gemini::set_model(model)
+                            gemini::set_api_key(api_key)
+                            host = ollama::get_host()
+                            conf::save(model, mode, think, host, tmp_dir)
+                            ui::show_info("Switched to Gemini (model: gemini-flash-latest)")
+                            ? (api_key == "") {
+                                ui::show_info("Set an API key with /key <KEY>")
+                            }
+                        }
+                        "ollama" => {
+                            provider = "ollama"
+                            conf::set_provider("ollama")
+                            host = ollama::get_host()
+                            conf::save(model, mode, think, host, tmp_dir)
+                            ui::show_info("Switched to Ollama — use /model to pick a local model")
+                        }
+                        _ => {
+                            ui::show_error("Usage: /provider ollama|gemini")
+                        }
+                    }
+                }
+
+                "/key" => {
+                    ? (args == "") {
+                        ui::show_error("Usage: /key <API_KEY>")
+                    } _ {
+                        api_key = args
+                        conf::set_api_key(args)
+                        gemini::set_api_key(args)
+                        host = ollama::get_host()
+                        conf::save(model, mode, think, host, tmp_dir)
+                        ui::show_info("API key saved.")
+                    }
                 }
 
                 "/clear" => {
@@ -126,16 +208,24 @@ running = ollama::is_running()
                 "/mode" => {
                     ?? args {
                         "think" => {
-                            ok = ollama::supports_think(model)
-                            ? ok {
+                            ? (provider == "gemini") {
                                 think = #1
                                 mode  = "think"
                                 host  = ollama::get_host()
                                 conf::save(model, mode, think, host, tmp_dir)
-                                ui::show_info("Think mode ON")
+                                ui::show_info("Think mode ON (note: Gemini manages reasoning automatically)")
                             } _ {
-                                warn = "Model " $++ model " does not support think mode — staying OFF"
-                                ui::show_error(warn)
+                                ok = ollama::supports_think(model)
+                                ? ok {
+                                    think = #1
+                                    mode  = "think"
+                                    host  = ollama::get_host()
+                                    conf::save(model, mode, think, host, tmp_dir)
+                                    ui::show_info("Think mode ON")
+                                } _ {
+                                    warn = "Model " $++ model " does not support think mode — staying OFF"
+                                    ui::show_error(warn)
+                                }
                             }
                         }
                         "fast" => {
@@ -152,66 +242,88 @@ running = ollama::is_running()
                 }
 
                 "/model" => {
-                    ? (args == "") {
-                        raw_list = <\ "ollama list" \>
-                        >> raw_list ¶
-                    } _ {
-                        ? (ollama::model_exists(args)) {
+                    ? (provider == "gemini") {
+                        ? (args == "") {
+                            ui::show_info("Current Gemini model: " $++ model)
+                            ui::show_info("Set one with: /model gemini-flash-latest")
+                        } _ {
                             model = args
-                            // If think is active, verify new model supports it
-                            ? think {
-                                ok = ollama::supports_think(model)
-                                ? ok {
-                                    ui::show_info("Think mode supported.")
-                                } _ {
-                                    think = #0
-                                    mode  = "fast"
-                                    warn  = "Model " $++ model " does not support think mode — disabled"
-                                    ui::show_error(warn)
-                                }
-                            }
+                            gemini::set_model(model)
                             host = ollama::get_host()
                             conf::save(model, mode, think, host, tmp_dir)
                             ui::show_mode(mode, model)
+                        }
+                    } _ {
+                        ? (args == "") {
+                            raw_list = <\ "ollama list" \>
+                            >> raw_list ¶
                         } _ {
-                            warn = "Model not found: " $++ args
-                            ui::show_error(warn)
-                            ui::show_info("Use /models to list available models")
+                            ? (ollama::model_exists(args)) {
+                                model = args
+                                // If think is active, verify new model supports it
+                                ? think {
+                                    ok = ollama::supports_think(model)
+                                    ? ok {
+                                        ui::show_info("Think mode supported.")
+                                    } _ {
+                                        think = #0
+                                        mode  = "fast"
+                                        warn  = "Model " $++ model " does not support think mode — disabled"
+                                        ui::show_error(warn)
+                                    }
+                                }
+                                host = ollama::get_host()
+                                conf::save(model, mode, think, host, tmp_dir)
+                                ui::show_mode(mode, model)
+                            } _ {
+                                warn = "Model not found: " $++ args
+                                ui::show_error(warn)
+                                ui::show_info("Use /models to list available models")
+                            }
                         }
                     }
                 }
 
                 "/host" => {
-                    ? (args == "") {
-                        ui::show_error("Usage: /host <addr>  e.g. /host 192.168.1.1 or /host 192.168.1.1:11434")
+                    ? (provider == "gemini") {
+                        ui::show_info("/host only applies to the Ollama provider")
                     } _ {
-                        ollama::set_host(args)
-                        host = ollama::get_host()
-                        >> "[info]  Host → " host ¶
-                        conf::save(model, mode, think, host, tmp_dir)
-                        ok = ollama::is_running()
-                        ? ok {
-                            ui::show_info("Ollama reachable at new host.")
+                        ? (args == "") {
+                            ui::show_error("Usage: /host <addr>  e.g. /host 192.168.1.1 or /host 192.168.1.1:11434")
                         } _ {
-                            ui::show_error("Ollama not reachable at new host.")
+                            ollama::set_host(args)
+                            host = ollama::get_host()
+                            >> "[info]  Host → " host ¶
+                            conf::save(model, mode, think, host, tmp_dir)
+                            ok = ollama::is_running()
+                            ? ok {
+                                ui::show_info("Ollama reachable at new host.")
+                            } _ {
+                                ui::show_error("Ollama not reachable at new host.")
+                            }
                         }
                     }
                 }
 
                 "/models" => {
-                    raw_list = <\ "ollama list" \>
-                    >> raw_list ¶
+                    ? (provider == "gemini") {
+                        ui::show_info("/models lists local Ollama models — not used for Gemini")
+                    } _ {
+                        raw_list = <\ "ollama list" \>
+                        >> raw_list ¶
+                    }
                 }
 
                 "/info" => {
                     turns = hist::get_count()
                     host  = ollama::get_host()
-                    >> "  model   => " model ¶
-                    >> "  mode    => " mode ¶
-                    >> "  think   => " think ¶
-                    >> "  host    => " host ¶
-                    >> "  tmp_dir => " tmp_dir ¶
-                    >> "  turns   => " turns ¶
+                    >> "  provider => " provider ¶
+                    >> "  model    => " model ¶
+                    >> "  mode     => " mode ¶
+                    >> "  think    => " think ¶
+                    >> "  host     => " host ¶
+                    >> "  tmp_dir  => " tmp_dir ¶
+                    >> "  turns    => " turns ¶
                 }
 
                 "/file" => {
@@ -227,9 +339,9 @@ running = ollama::is_running()
                             sessions::append_user("/file " $++ args)
                             msgs_file = hist::get_msgs_file()
                             ui::show_info("...")
-                            response = ollama::chat(model, msgs_file, think)
+                            response = do_chat(provider, model, msgs_file, think)
                             hist::add_assistant(response)
-                            sessions::append_assistant()
+                            sessions::append_assistant(response)
                             ui::show_response(response, model)
                         } _ {
                             ui::show_error("File not found: " $++ args)
@@ -275,12 +387,17 @@ running = ollama::is_running()
                 "/reset" => {
                     <\ "rm -f " tmp_dir "/*.json " tmp_dir "/*.txt " tmp_dir "/*.err" \>
                     <\ "rm -f ~/.ZethyCLI/ZethyCLI.conf" \>
-                    model = pick_model()
+                    ? (provider == "gemini") {
+                        model = "gemini-flash-latest"
+                        gemini::set_model(model)
+                    } _ {
+                        model = pick_model()
+                    }
                     mode  = "fast"
                     think = #0
                     host  = ollama::get_host()
                     conf::save(model, mode, think, host, tmp_dir)
-                    ui::show_info("Model saved to ~/.ZethyCLI/ZethyCLI.conf")
+                    ui::show_info("Config saved.")
                     hist::init(sys_prompt, mem_ctx)
                     ui::show_info("Session reset.")
                 }
@@ -297,16 +414,11 @@ running = ollama::is_running()
             msgs_file = hist::get_msgs_file()
 
             ui::show_info("...")
-            response = ollama::chat(model, msgs_file, think)
+            response = do_chat(provider, model, msgs_file, think)
 
             hist::add_assistant(response)
-            sessions::append_assistant()
+            sessions::append_assistant(response)
             ui::show_response(response, model)
         }
     }
-
-} _ {
-    host = ollama::get_host()
-    ui::show_error("Ollama not reachable at " , host)
-    ui::show_info("Start Ollama with: ollama serve")
 }

@@ -11,13 +11,20 @@
         get_think
         get_host
         get_tmp_dir
+        get_provider
+        get_api_key
+        set_provider
+        set_api_key
     }
 
-    cfg_model   = ""
-    cfg_mode    = "fast"
-    cfg_think   = #0
-    cfg_host    = "http://localhost:11434"
-    cfg_tmp_dir = "/tmp/ZethyCLI"
+    cfg_model    = ""
+    cfg_mode     = "fast"
+    cfg_think    = #0
+    cfg_host     = "http://localhost:11434"
+    cfg_tmp_dir  = "/tmp/ZethyCLI"
+    // provider: "ollama" (local) or "gemini" (external web API with api_key)
+    cfg_provider = "ollama"
+    cfg_api_key  = ""
 
     load() {
         <\ "mkdir -p ~/.ZethyCLI" \>
@@ -26,8 +33,10 @@
             raw_model   = <\ "jq -r '.model   // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
             raw_mode    = <\ "jq -r '.mode    // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
             raw_think   = <\ "jq -r '.think   // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_host    = <\ "jq -r '.host    // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_tmp_dir = <\ "jq -r '.tmp_dir // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+            raw_host    = <\ "jq -r '.host     // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+            raw_tmp_dir = <\ "jq -r '.tmp_dir  // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+            raw_prov    = <\ "jq -r '.provider // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+            raw_key     = <\ "jq -r '.api_key  // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
 
             m = raw_model$~~["\n":""]
             ? (m <> "") { cfg_model = m }
@@ -43,6 +52,12 @@
 
             d = raw_tmp_dir$~~["\n":""]
             ? (d <> "") { cfg_tmp_dir = d }
+
+            pv = raw_prov$~~["\n":""]
+            ? (pv <> "") { cfg_provider = pv }
+
+            k = raw_key$~~["\n":""]
+            ? (k <> "") { cfg_api_key = k }
         }
         // Ensure tmp dir exists on every startup
         tmp = cfg_tmp_dir
@@ -58,12 +73,20 @@
         ? think { s_think = "true" }
         s_host    = host
         s_tmp_dir = tmp_dir
-        <\ "jq -n --arg model '" s_model "' --arg mode '" s_mode "' --argjson think " s_think " --arg host '" s_host "' --arg tmp_dir '" s_tmp_dir "' '\{\"model\":$model,\"mode\":$mode,\"think\":$think,\"host\":$host,\"tmp_dir\":$tmp_dir}' > ~/.ZethyCLI/ZethyCLI.conf" \>
+        // provider + api_key come from module state (set via set_provider/set_api_key)
+        s_prov    = cfg_provider
+        s_key     = cfg_api_key
+        <\ "jq -n --arg model '" s_model "' --arg mode '" s_mode "' --argjson think " s_think " --arg host '" s_host "' --arg tmp_dir '" s_tmp_dir "' --arg provider '" s_prov "' --arg api_key '" s_key "' '\{\"model\":$model,\"mode\":$mode,\"think\":$think,\"host\":$host,\"tmp_dir\":$tmp_dir,\"provider\":$provider,\"api_key\":$api_key}' > ~/.ZethyCLI/ZethyCLI.conf" \>
     }
 
-    get_model()   { <~ cfg_model   }
-    get_mode()    { <~ cfg_mode    }
-    get_think()   { <~ cfg_think   }
-    get_host()    { <~ cfg_host    }
-    get_tmp_dir() { <~ cfg_tmp_dir }
+    get_model()    { <~ cfg_model    }
+    get_mode()     { <~ cfg_mode     }
+    get_think()    { <~ cfg_think    }
+    get_host()     { <~ cfg_host     }
+    get_tmp_dir()  { <~ cfg_tmp_dir  }
+    get_provider() { <~ cfg_provider }
+    get_api_key()  { <~ cfg_api_key  }
+
+    set_provider(p) { cfg_provider = p }
+    set_api_key(k)  { cfg_api_key  = k }
 }

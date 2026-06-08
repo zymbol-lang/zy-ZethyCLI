@@ -1,54 +1,66 @@
 // Incremental session archive — ~/.ZethyCLI/sessions/YYYY-MM-DD_HH-MM-SS.json
 // Written per turn: append_user before the API call, append_assistant after.
-// Crash-safe: the worst-case loss is one assistant response — the user prompt
-// that triggered it is always archived before we touch Ollama.
-// tmp_dir is set by set_tmp_dir() at startup (same as history.zy pattern).
+// Migrated to std/io + std/json. The home dir is resolved per call (std/io does
+// not expand `~`); `date` stays a shell call (CLI utility, not a gap).
 
 # sessions {
+    <# std/io   => io
+    <# std/json => json
+
     #> {
         start
-        set_tmp_dir
         append_user
         append_assistant
         list
     }
 
-    // Private mutable state
-    tmp_dir      = "/tmp/ZethyCLI"
+    // The current run's session file (set by start()).
     session_file = ""
 
-    set_tmp_dir(dir) {
-        tmp_dir = dir
+    // Resolve ~/.ZethyCLI/sessions (std/io does not expand `~`).
+    sdir() {
+        home = <\ "printenv HOME" \>
+        <~ home "/.ZethyCLI/sessions"
     }
 
     // Create the session file for this run (empty JSON array).
-    // Called once at startup after set_tmp_dir().
     start() {
-        ts = <\ "date '+%Y-%m-%d_%H-%M-%S'" \>
-        ts = ts$~~["\n":""]
-        <\ "mkdir -p ~/.ZethyCLI/sessions" \>
-        session_file = "~/.ZethyCLI/sessions/" $++ ts $+ ".json"
-        <\ "printf '[]' > " session_file \>
+        ts  = <\ "date '+%Y-%m-%d_%H-%M-%S'" \>
+        dir = sdir()
+        _m  = io::mkdir(dir)
+        session_file = dir "/" ts ".json"
+        _w = io::write(session_file, "[]")
     }
 
-    // Append a user message to the session archive.
-    // G4: sanitize single quotes before shell interpolation.
-    append_user(content) {
-        safe = content$~~["'":"(APOS)"]
-        <\ "jq --arg c '" safe "' '. += [\{role:\"user\",content:$c}]' " session_file " > " tmp_dir "/sess_tmp.json && mv " tmp_dir "/sess_tmp.json " session_file \>
+    // Append a {role, content} message to the session archive.
+    append_msg(role, content) {
+        raw  = io::read(session_file)
+        msgs = json::decode(raw)
+        msgs = msgs$+ (role: role, content: content)
+        _w   = io::write(session_file, json::encode(msgs))
     }
 
-    // Append the assistant response from {tmp_dir}/content.txt.
-    // Uses --rawfile to avoid G4 — AI content is never shell-quoted.
-    append_assistant() {
-        content_file = tmp_dir $+ "/content.txt"
-        <\ "jq --rawfile c " content_file " '. += [\{role:\"assistant\",content:$c}]' " session_file " > " tmp_dir "/sess_tmp.json && mv " tmp_dir "/sess_tmp.json " session_file \>
-    }
+    append_user(content)      { _r = append_msg("user", content) }
+    append_assistant(content) { _r = append_msg("assistant", content) }
 
-    // List all session files, newest-first.
-    // Returns a formatted multi-line string; each line shows date/time and message count.
+    // List archived sessions with their message counts.
     list() {
-        result = <\ "ls -t ~/.ZethyCLI/sessions/*.json 2>/dev/null | while read f; do n=$(jq 'length' \"$f\" 2>/dev/null || echo '?'); base=$(basename \"$f\" .json); echo \"  $\{base/_/ } ($n messages)\"; done" \>
-        <~ result
+        dir     = sdir()
+        entries = io::list(dir)
+        ? entries$! { <~ "" }
+        out = ""
+        @ f : entries {
+            path = dir "/" f
+            raw  = io::read(path)
+            nstr = "?"
+            ? (raw$! == #0) {
+                arr  = json::decode(raw)
+                len  = arr$#
+                nstr = "" len
+            }
+            line = "  " f " (" nstr " messages)\n"
+            out  = out line
+        }
+        <~ out
     }
 }

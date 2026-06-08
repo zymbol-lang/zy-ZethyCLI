@@ -181,13 +181,13 @@ The export block can appear in two positions — both are valid:
 // Position 1 — exports before imports:
 # module_name {
     #> { fn, CONST }
-    <# ./dep <= dep
+    <# ./dep => dep
     code...
 }
 
 // Position 2 — imports before exports (MANUAL recommended order):
 # module_name {
-    <# ./dep <= dep
+    <# ./dep => dep
     #> { fn, CONST }
     code...
 }
@@ -453,7 +453,7 @@ saved to `~/.ZethyCLI/memory.txt` by `memory::save_summary()` in `main.zy`.
 **`/exit` updated** — auto-summary if session had turns:
 
 ```zymbol
-"/exit" : {
+"/exit" => {
     turns = hist::get_count()
     ? (turns > 2) {
         ui::show_info("Summarizing session...")
@@ -662,8 +662,8 @@ mutable state (`host_base`) — changed via `set_host()`, read by all API functi
     MODEL_THINK
 }
 
-<# ./http <= http
-<# ./json <= json
+<# ./http => http
+<# ./json => json
 
 MODEL_FAST  := "gemma3:4b"
 MODEL_THINK := "deepseek-r1:1.5b"
@@ -961,7 +961,7 @@ add_user_from_file(label, content_file) {
 5. Adds assistant response to history — file + response are now in context
 
 ```zymbol
-"/file" : {
+"/file" => {
     ? (args == "") {
         ui::show_error("Usage: /file <path>")
     } _ {
@@ -1028,7 +1028,7 @@ ui::show_response(response, model)
 
 **`/history` handler**:
 ```zymbol
-"/history" : {
+"/history" => {
     listing = sessions::list()
     ? (listing$~~["\n":""] == "") {
         ui::show_info("No sessions archived yet.")
