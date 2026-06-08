@@ -18,7 +18,7 @@ Zymbol necesita un módulo de red para hacer peticiones HTTP sin depender de `cu
 
 **API propuesta**:
 ```zymbol
-<# std/net <= net
+<# std/net => net
 
 response = net::get("http://example.com")           // GET
 response = net::post(url, headers, body)             // POST
@@ -42,7 +42,7 @@ Serialización y deserialización JSON sin depender de `jq` o Python.
 
 **API propuesta**:
 ```zymbol
-<# std/json <= json
+<# std/json => json
 
 // Encode
 str = json::encode(value)          // any Zymbol value → JSON string
@@ -72,7 +72,7 @@ Lectura y escritura de archivos sin `cat`, `printf`, `rm` via BashExec.
 
 **API propuesta**:
 ```zymbol
-<# std/io <= io
+<# std/io => io
 
 content = io::read("/path/to/file")           // string
 io::write("/path/to/file", content)           // overwrite

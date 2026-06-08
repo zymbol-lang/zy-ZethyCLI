@@ -1,10 +1,13 @@
 // Cross-session persistent memory — ~/.ZethyCLI/memory.txt
 // Stores user-defined facts (/remember) and auto-generated session summaries (/exit).
 // Injected into the system prompt at startup so the model always has context.
-// G4 workaround: save_fact sanitizes single quotes; save_summary uses file-cat
-//   to avoid shell quoting of arbitrary AI-generated content.
+// Migrated to std/io. The home directory is resolved once via the shell channel
+// (printenv HOME) because std/io does not expand `~`; `date` stays a shell call
+// (a CLI utility, not a language gap).
 
 # memory {
+    <# std/io => io
+
     #> {
         get_context
         save_fact
@@ -12,35 +15,38 @@
         clear
     }
 
-    // Returns full memory.txt content for system prompt injection.
-    // Returns "" if the file does not exist (first run, no memory yet).
+    // Resolve ~/.ZethyCLI/memory.txt — std/io does not expand `~`, and module
+    // variables must be literals, so the home dir is looked up per call.
+    mem_path() {
+        home = <\ "printenv HOME" \>
+        <~ home "/.ZethyCLI/memory.txt"
+    }
+
+    // Returns full memory.txt content, or "" if it does not exist yet.
     get_context() {
-        exists = <\ "test -f ~/.ZethyCLI/memory.txt && echo 1 || echo 0" \>
-        ? (exists$~~["\n":""] == "1") {
-            content = <\ "cat ~/.ZethyCLI/memory.txt" \>
-            <~ content
-        }
-        <~ ""
+        raw = io::read(mem_path())
+        ? raw$! { <~ "" }
+        <~ raw
     }
 
     // Append a user-defined fact as a bullet point.
-    // G4: sanitizes single quotes before shell interpolation.
     save_fact(fact) {
-        safe = fact$~~["'":"(APOS)"]
-        <\ "printf '\\n- " safe "' >> ~/.ZethyCLI/memory.txt" \>
+        line = "\n- " fact
+        mf = mem_path()
+        _w = io::append(mf, line)
     }
 
-    // Append a dated summary block from a content file.
-    // sum_content_file: path to file written by ollama::summarize() — avoids
-    // shell quoting of AI-generated content entirely (G4 full mitigation).
-    save_summary(sum_content_file) {
+    // Append a dated summary block. Takes the summary TEXT directly (std/json/io
+    // removed the old content-file handoff that worked around shell quoting).
+    save_summary(text) {
         date_str = <\ "date '+%Y-%m-%d %H:%M'" \>
-        date_str = date_str$~~["\n":""]
-        <\ "\{ printf '\\n[" date_str "]\\n'; cat " sum_content_file "; \} >> ~/.ZethyCLI/memory.txt" \>
+        block = "\n[" date_str "]\n" text "\n"
+        mf = mem_path()
+        _w = io::append(mf, block)
     }
 
-    // Erase all memory. Called by /forget command.
+    // Erase all memory. Called by /forget.
     clear() {
-        <\ "rm -f ~/.ZethyCLI/memory.txt" \>
+        _d = io::delete(mem_path())
     }
 }

@@ -1,0 +1,94 @@
+// Gemini API client — external web provider (alternative to Ollama).
+// Built on the v0.0.7 standard library (G1/G2/G3 resolved): std/net for HTTP
+// with an auth header, std/json to build the request and parse the response,
+// std/io to read the conversation history file.
+//
+// Drop-in for the calls main.zy makes on a provider: chat / summarize.
+// Both return their text directly (no intermediate files) — std/json removes the
+// shell-quoting problem that the old content.txt handoff worked around.
+// Authenticates with the X-goog-api-key header (std/net header support).
+// Converts the Ollama-style history (messages: [{role, content}]) into Gemini's
+// "contents" shape (assistant -> model, everything else -> user).
+
+# gemini {
+    <# std/net  => net
+    <# std/json => json
+    <# std/io   => io
+
+    #> {
+        chat
+        summarize
+        set_api_key
+        set_model
+        get_model
+        is_configured
+    }
+
+    api_key   = ""
+    cfg_model = "gemini-flash-latest"
+    base      = "https://generativelanguage.googleapis.com/v1beta/models/"
+
+    set_api_key(k) { api_key   = k }
+    set_model(m)   { cfg_model = m }
+    get_model()    { <~ cfg_model }
+
+    // Configured = a non-empty API key is present.
+    is_configured() { <~ (api_key <> "") }
+
+    // Convert Ollama-style messages into Gemini "contents".
+    to_contents(msgs) {
+        contents = []
+        @ m : msgs {
+            role = "user"
+            ? (m.role == "assistant") { role = "model" }
+            entry = (role: role, parts: [ (text: m.content) ])
+            contents = contents$+ entry
+        }
+        <~ contents
+    }
+
+    // POST a "contents" array to a model and return the response body (String | Error).
+    send(model, contents) {
+        body    = json::encode((contents: contents))
+        url     = base model ":generateContent"
+        headers = [ ("X-goog-api-key", api_key) ]
+        <~ net::post_json(url, body, headers)
+    }
+
+    // Extract the answer text from a decoded Gemini response.
+    extract(raw) {
+        resp = json::decode(raw)
+        <~ resp.candidates[1].content.parts[1].text
+    }
+
+    // Send a chat turn. Reads the history file, calls Gemini, writes the answer to
+    // {tmp_dir}/content.txt (so history::add_assistant / sessions::append_assistant
+    // pick it up unchanged), and returns the answer text.
+    // `think` is accepted for interface parity with ollama::chat and ignored.
+    chat(model, msgs_file, think) {
+        raw_msgs = io::read(msgs_file)
+        msgs     = json::decode(raw_msgs)
+        contents = to_contents(msgs)
+        raw      = send(model, contents)
+        ? raw$! {
+            <~ "[network error] request to Gemini failed — check API key / connection"
+        }
+        <~ extract(raw)
+    }
+
+    // Summarize the conversation: history + a summary instruction, one-shot.
+    // Writes the summary to {tmp_dir}/sum_content.txt and returns that path
+    // (same contract as ollama::summarize).
+    summarize(model, msgs_file) {
+        raw_msgs = io::read(msgs_file)
+        msgs     = json::decode(raw_msgs)
+        contents = to_contents(msgs)
+        instr    = (role: "user", parts: [ (text: "Summarize this conversation in 3 to 5 concise bullet points. Focus on key topics, decisions, and facts about the user. Be brief.") ])
+        contents = contents$+ instr
+        raw      = send(model, contents)
+        ? raw$! {
+            <~ "(summary unavailable — network error)"
+        }
+        <~ extract(raw)
+    }
+}

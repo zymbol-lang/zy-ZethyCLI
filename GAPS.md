@@ -15,7 +15,8 @@
 
 ## G1 — No `std/net` (HTTP client)
 
-**Status**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 10)
+**Status**: ✅ RESUELTO en v0.0.7 — `std/net` existe (get/post/post_json/head, con header opcional). `lib/ollama.zy` y `lib/gemini.zy` usan `net::post_json`/`net::get`; `lib/http.zy` (workaround curl) eliminado. Errores de red llegan como `Value::Error` suave (chequeable con `$!`). Limitación restante: sin control de timeout desde Zymbol.
+**Status (histórico)**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 10)
 **Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/http.zy`
 
@@ -38,7 +39,8 @@ Constraints confirmed by the exercise:
 
 ## G2 — No `std/json` (JSON encode/decode)
 
-**Status**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 9)
+**Status**: ✅ RESUELTO en v0.0.7 — `std/json` existe (`decode`→Value, `encode`→String; objeto↔NamedTuple, array↔Array). `lib/ollama.zy`, `lib/gemini.zy`, `lib/history.zy`, `lib/sessions.zy` construyen/parsean con `json::encode`/`json::decode`; `lib/json.zy` (workaround jq) eliminado. Field-extraction por path dinámico (`json::get`) NO existe — se decodea a Value y se accede con `.campo` (paths estáticos).
+**Status (histórico)**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 9)
 **Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/json.zy`, `lib/ollama.zy`, `lib/history.zy`
 
@@ -61,7 +63,8 @@ Operations confirmed as necessary:
 
 ## G3 — No `std/io` (file read/write)
 
-**Status**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 8)
+**Status**: ✅ RESUELTO en v0.0.7 — `std/io` existe (read/write/append/exists/delete/list/mkdir). `lib/history.zy`, `lib/memory.zy`, `lib/sessions.zy` usan `io::read`/`io::write`/`io::append`/`io::delete`; `lib/file.zy` (workaround cat/printf) eliminado. Nota: `io` NO expande `~` — el home se resuelve con `<\ "printenv HOME" \>` (canal de shell para entorno, no es gap). `date` sigue siendo shell (utilidad CLI).
+**Status (histórico)**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 8)
 **Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/file.zy`, `lib/history.zy`
 
@@ -83,7 +86,8 @@ Operations confirmed as necessary:
 
 ## G4 — BashExec shell-safety (single quotes in content)
 
-**Status**: workaround — sanitizar `'` con `$~~`; fix completo cuando `std/io` + `std/net` (v0.0.6) eliminen BashExec de la mayoría de casos
+**Status**: ✅ MAYORMENTE RESUELTO en v0.0.7 — al migrar a `std/json`/`std/io`/`std/net`, el contenido (mensajes, respuestas IA, facts) ya no se interpola en strings de shell, así que la sanitización `$~~["'":"(APOS)"]` se eliminó de history/memory/sessions/ollama/gemini. Solo queda en `lib/config.zy` (sigue usando `jq` por tolerancia a campos ausentes); las API keys/valores de config son shell-safe en la práctica.
+**Status (histórico)**: workaround — sanitizar `'` con `$~~`
 **Discovered**: Design phase
 **Module affected**: `lib/json.zy`, `lib/file.zy`, `lib/history.zy`
 
@@ -177,9 +181,9 @@ expresión en el AST. Ahora puede usarse directamente en match arms y assignment
 ```zymbol
 // ✅ Funciona tras G12:
 output = ?? lang {
-    "py" : <\ "python3 " tmp \>
-    "sh" : <\ "bash " tmp \>
-    _    : "unsupported"
+    "py" => <\ "python3 " tmp \>
+    "sh" => <\ "bash " tmp \>
+    _    => "unsupported"
 }
 ```
 
@@ -201,7 +205,7 @@ bloqueaba la ejecución.
 
 ```zymbol
 // ✅ Funciona:
-<# ./config <= cfg
+<# ./config => cfg
 url = cfg.BASE_URL
 model = cfg.DEFAULT_MODEL
 >> url ¶
@@ -360,12 +364,12 @@ Ambas son válidas. Comentarios entre `# name` y `#>` siguen siendo permitidos
 // ✅ Forma 1 — #> antes de imports:
 # module_name
 #> { fn, CONST }
-<# ./dep <= dep
+<# ./dep => dep
 code...
 
 // ✅ Forma 2 — #> después de imports (G14 fix):
 # module_name
-<# ./dep <= dep
+<# ./dep => dep
 #> { fn, CONST }
 code...
 
@@ -446,8 +450,8 @@ chat(model, msgs_file, think) {
 // ✅ También en ?? y @:
 greet_match(lang) {
     ?? lang {
-        "es" : { r = <\ "echo hola " lang \> }
-        _ :    { r = <\ "echo hello " lang \> }
+        "es" => { r = <\ "echo hola " lang \> }
+        _ =>    { r = <\ "echo hello " lang \> }
     }
 }
 ```
@@ -555,10 +559,10 @@ El parser de `<#` solo reconoce dos formas de ruta:
 
 | Forma | Ejemplo | Funciona |
 |-------|---------|----------|
-| Relativa actual | `<# ./lib/ollama <= m` | ✅ |
-| Relativa padre | `<# ../shared/utils <= m` | ✅ |
-| Absoluta | `<# /home/user/libs/utils <= m` | ✗ |
-| Home `~` | `<# ~/zymbol-libs/utils <= m` | ✗ |
+| Relativa actual | `<# ./lib/ollama => m` | ✅ |
+| Relativa padre | `<# ../shared/utils => m` | ✅ |
+| Absoluta | `<# /home/user/libs/utils => m` | ✗ |
+| Home `~` | `<# ~/zymbol-libs/utils => m` | ✗ |
 
 **Causa raíz — parser** (`parse_module_path`):
 El parser espera que la ruta empiece con `.` (`Dot`) o `..` (`DotDot`).
@@ -568,7 +572,7 @@ el resto de la línea se parsea como statements normales, produciendo errores en
 ```
 error: expected module path
   --> test.zy:1:4
-  |  <# /tmp/mymod <= m
+  |  <# /tmp/mymod => m
   |     ^
 ```
 
@@ -647,10 +651,10 @@ let mut resolved = if module_path.is_absolute {
 
 ```zymbol
 // ✅ Las cuatro formas funcionan:
-<# ./lib/ollama    <= ollama   // relativa actual
-<# ../shared/utils <= u        // relativa padre
-<# /opt/zymbol-libs/json <= j  // absoluta
-<# ~/zymbol-libs/http    <= h  // home-relativa
+<# ./lib/ollama    => ollama   // relativa actual
+<# ../shared/utils => u        // relativa padre
+<# /opt/zymbol-libs/json => j  // absoluta
+<# ~/zymbol-libs/http    => h  // home-relativa
 ```
 
 ---

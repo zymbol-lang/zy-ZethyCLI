@@ -44,6 +44,8 @@
     show_help() {
         >> ¶
         >> "  Commands:" ¶
+        >> "  /provider <name>    switch provider: ollama (local) | gemini (web)  (saved)" ¶
+        >> "  /key <api_key>      set API key for the web provider (gemini)       (saved)" ¶
         >> "  /model <name>       switch model  (no args → shows ollama list)  (saved)" ¶
         >> "  /mode think         enable reasoning mode for current model       (saved)" ¶
         >> "  /mode fast          disable reasoning mode                        (saved)" ¶
