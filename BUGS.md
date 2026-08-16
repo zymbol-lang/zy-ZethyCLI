@@ -223,3 +223,51 @@ retornar, independientemente de si hubo control flow pendiente.
 **Verificado**: análisis estático de `interpreter/crates/zymbol-interpreter/src/loops.rs`
 y `lib.rs` (funciones `handle_loop_control`, `execute_block`, `execute_block_no_scope`).
 **Test de regresión**: `interpreter/tests/loops/02_infinite_continue.zy` (11/11 PASS).
+
+---
+
+## BUG-08 — Llamada `alias::fn` con aridad incorrecta: aceptada por `zymbol check`, divergente entre motores
+
+**Severidad**: CRÍTICA
+**Descubierto**: 2026-08-08, por el motor zyml al rechazar `main.zy`
+**Archivo afectado**: `main.zy:100`
+**Estado**: ✅ RESUELTO en v0.0.8 — corregido en ZethyCLI *y* en el motor (REFERENCE.md L28)
+
+`ui::show_error` toma un parámetro y se llamaba con dos:
+
+```zymbol
+ui::show_error("Ollama not reachable at " , host)   // la coma sobra
+```
+
+`zymbol check` daba el fichero por bueno. El error solo aparecía al ejecutar, y solo si se
+alcanzaba la rama de "Ollama no accesible" — el camino que menos se prueba, porque durante
+el desarrollo Ollama siempre está arrancado.
+
+**Los dos motores fallaban de forma distinta:**
+
+```
+TW: Runtime error: function expects 1 arguments, got 2   ← la app muere al arrancar
+VM: [error] Ollama not reachable at                      ← se traga el host y continúa
+```
+
+**Causa raíz (motor, no ZethyCLI)**: la verificación de aridad solo miraba `Expr::Identifier`
+como callable, así que `f(a,b)` se reportaba pero `m::f(a,b)` no. Y la VM no verificaba nada:
+`Instruction::Call` descartaba `arg_regs.len()` y copiaba *todos* los argumentos a la ventana
+de registros del callee, machacando una local suya. El mismo hueco alcanzaba a `std/`
+(`math::sqrt(4.0, 9.0)` devolvía `2` en la VM).
+
+**Fix en ZethyCLI**: quitar la coma — `ui::show_error("Ollama not reachable at " host)`.
+Es juxtaposición, un solo argumento, que es lo que la función espera. Dentro de los
+argumentos de una llamada la juxtaposición no funcionaba hasta v0.0.8 (REFERENCE.md L25);
+verificada en los tres motores.
+
+**Fix en el motor**: `crates/zymbol-semantic/src/call_arity.rs` construye la tabla
+alias → función → aridad, y la consumen `zymbol check`, `zymbol run`, `zymbol build` y el
+LSP. Un desajuste de aridad es **error semántico fatal antes de ejecutar**, en las tres
+formas de llamada (`f()`, `alias::f()`, `std::f()`) y en ambos motores — que es lo que el
+lenguaje ya hacía con las llamadas locales. Regresión: `interpreter/tests/arity/`
+(7 casos, TW == VM).
+
+**Lección**: el bug vivía en una rama casi nunca ejecutada, que es exactamente el perfil de
+fallo que paga un chequeo estático. El mismo barrido destapó otro idéntico en
+`ZyAudit/测试/test_析答.zy`, roto en TW y funcionando por accidente en la VM.

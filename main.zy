@@ -97,7 +97,7 @@ ready = #0
             ready = #1
         } _ {
             host = ollama::get_host()
-            ui::show_error("Ollama not reachable at " , host)
+            ui::show_error("Ollama not reachable at " host)
             ui::show_info("Start Ollama with: ollama serve  (or: /provider gemini)")
         }
     }
