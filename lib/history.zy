@@ -40,7 +40,7 @@
     append_msg(role, content) {
         raw   = io::read(msgs_file)
         msgs  = json::decode(raw)
-        msgs  = msgs$+ (role: role, content: content)
+        msgs  = msgs$+ #(role: role, content: content)
         _w    = io::write(msgs_file, json::encode(msgs))
         n     = get_count()
         new_n = n + 1
@@ -54,7 +54,7 @@
         ? (mem_ctx <> "") {
             full_prompt = system_prompt "\n\nMemory from previous sessions:\n" mem_ctx
         }
-        msgs = [ (role: "system", content: full_prompt) ]
+        msgs = [ #(role: "system", content: full_prompt) ]
         _w = io::write(msgs_file, json::encode(msgs))
         _c = io::write(count_file, "1")
     }

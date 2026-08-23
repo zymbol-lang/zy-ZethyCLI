@@ -41,7 +41,7 @@
         @ m : msgs {
             role = "user"
             ? (m.role == "assistant") { role = "model" }
-            entry = (role: role, parts: [ (text: m.content) ])
+            entry = #(role: role, parts: [ #(text: m.content) ])
             contents = contents$+ entry
         }
         <~ contents
@@ -49,7 +49,7 @@
 
     // POST a "contents" array to a model and return the response body (String | Error).
     send(model, contents) {
-        body    = json::encode((contents: contents))
+        body    = json::encode(#(contents: contents))
         url     = base model ":generateContent"
         headers = [ ("X-goog-api-key", api_key) ]
         <~ net::post_json(url, body, headers)
@@ -83,7 +83,7 @@
         raw_msgs = io::read(msgs_file)
         msgs     = json::decode(raw_msgs)
         contents = to_contents(msgs)
-        instr    = (role: "user", parts: [ (text: "Summarize this conversation in 3 to 5 concise bullet points. Focus on key topics, decisions, and facts about the user. Be brief.") ])
+        instr    = #(role: "user", parts: [ #(text: "Summarize this conversation in 3 to 5 concise bullet points. Focus on key topics, decisions, and facts about the user. Be brief.") ])
         contents = contents$+ instr
         raw      = send(model, contents)
         ? raw$! {
