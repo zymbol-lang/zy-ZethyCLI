@@ -47,7 +47,7 @@
     // response shape that would lack the capabilities field.)
     supports_think(model) {
         url  = host_base "/api/show"
-        body = json::encode((model: model))
+        body = json::encode(#(model: model))
         raw  = net::post_json(url, body)
         ? raw$! { <~ #0 }
         <~ ((raw$?? "thinking")$# > 0)
@@ -59,7 +59,7 @@
         url      = host_base "/api/chat"
         raw_msgs = io::read(msgs_file)
         msgs     = json::decode(raw_msgs)
-        req      = (model: model, messages: msgs, stream: #0, think: think)
+        req      = #(model: model, messages: msgs, stream: #0, think: think)
         raw      = net::post_json(url, json::encode(req))
         ? raw$! {
             <~ "[network error] Ollama request failed — is the daemon running?"
@@ -77,9 +77,9 @@
         url      = host_base "/api/chat"
         raw_msgs = io::read(msgs_file)
         msgs     = json::decode(raw_msgs)
-        instr    = (role: "user", content: "Summarize this conversation in 3 to 5 concise bullet points. Focus on key topics, decisions, and facts about the user. Be brief.")
+        instr    = #(role: "user", content: "Summarize this conversation in 3 to 5 concise bullet points. Focus on key topics, decisions, and facts about the user. Be brief.")
         msgs     = msgs$+ instr
-        req      = (model: model, messages: msgs, stream: #0)
+        req      = #(model: model, messages: msgs, stream: #0)
         raw      = net::post_json(url, json::encode(req))
         ? raw$! {
             <~ "(summary unavailable — network error)"

@@ -36,7 +36,7 @@
     append_msg(role, content) {
         raw  = io::read(session_file)
         msgs = json::decode(raw)
-        msgs = msgs$+ (role: role, content: content)
+        msgs = msgs$+ #(role: role, content: content)
         _w   = io::write(session_file, json::encode(msgs))
     }
 
