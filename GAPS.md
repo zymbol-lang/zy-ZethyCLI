@@ -120,7 +120,7 @@ variable content inside shell command strings.
 **Discovered**: Design phase
 
 Join de strings se hace con el operador `,` entre expresiones de tipo string.
-La filosofía del lenguaje es simbólica — no existen keywords como `join`.
+La filosofía del lenguaje es simbólica — no existen palabras como `join`.
 
 ```zymbol
 s = "hello" , " " , "world" , "!"   // → "hello world!"
