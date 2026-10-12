@@ -76,7 +76,7 @@
         // provider + api_key come from module state (set via set_provider/set_api_key)
         s_prov    = cfg_provider
         s_key     = cfg_api_key
-        <\ "jq -n --arg model '" s_model "' --arg mode '" s_mode "' --argjson think " s_think " --arg host '" s_host "' --arg tmp_dir '" s_tmp_dir "' --arg provider '" s_prov "' --arg api_key '" s_key "' '\{\"model\":$model,\"mode\":$mode,\"think\":$think,\"host\":$host,\"tmp_dir\":$tmp_dir,\"provider\":$provider,\"api_key\":$api_key}' > ~/.ZethyCLI/ZethyCLI.conf" \>
+        <\ "jq -n --arg model '" s_model "' --arg mode '" s_mode "' --argjson think " s_think " --arg host '" s_host "' --arg tmp_dir '" s_tmp_dir "' --arg provider '" s_prov "' --arg api_key '" s_key "' '\{\"model\":$model,\"mode\":$mode,\"think\":$think,\"host\":$host,\"tmp_dir\":$tmp_dir,\"provider\":$provider,\"api_key\":$api_key\}' > ~/.ZethyCLI/ZethyCLI.conf" \>
     }
 
     get_model()    { <~ cfg_model    }
