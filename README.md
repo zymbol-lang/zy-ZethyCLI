@@ -1,5 +1,7 @@
 # ZethyCLI
 
+🌐 [zymbol-lang.org](https://zymbol-lang.org) · ▶ [playground](https://zymbol-lang.org/playground.html)
+
 > **Updated for Zymbol v0.0.8 — 2026-08-31**
 
 > A real-world AI chat CLI written entirely in Zymbol.
