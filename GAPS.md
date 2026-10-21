@@ -769,10 +769,10 @@ por `\{foo\}`. El intérprete re-interpolaba ambos en runtime.
 
 | ID | Gap | Severity | Workaround | Future module |
 |----|-----|----------|------------|---------------|
-| G1 | No HTTP client | intentional — stdlib roadmap | curl via BashExec | `std/net` (IMPL_V007.md Step 10) |
-| G2 | No JSON encode/decode | intentional — stdlib roadmap | jq via BashExec | `std/json` (IMPL_V007.md Step 9) |
-| G3 | No file read/write | intentional — stdlib roadmap | cat/printf via BashExec | `std/io` (IMPL_V007.md Step 8) |
-| G4 | BashExec shell-safety (single quotes) | workaround | sanitize `'` | `std/io` + `std/net` (v0.0.6) |
+| G1 | No HTTP client | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/net` (verificado 2026-10-21 contra un servidor local, `zytw` y `zyvm`). **Resto abierto:** sin control de timeout desde Zymbol | `std/net` (IMPL_V007.md Step 10) |
+| G2 | No JSON encode/decode | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/json` (verificado 2026-10-21) | `std/json` (IMPL_V007.md Step 9) |
+| G3 | No file read/write | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/io` (verificado 2026-10-21) | `std/io` (IMPL_V007.md Step 8) |
+| G4 | BashExec shell-safety (single quotes) | workaround | ✅ mayormente resuelto v0.0.7. **Resto de la app:** `lib/config.zy` sigue leyendo con `jq` por shell. **Resto del lenguaje:** `<\ \>` interpola sin escapar, registrado como `interpreter/AGENTIC.md` G2 | `std/io` + `std/net` (v0.0.6) |
 | G5 | Join strings | — | ✅ `,` operator | ya existe |
 | G6 | Split string | — | ✅ `str / char` | falso warning corregido |
 | G7 | BashExec trailing `\n` | SIGNIFICANT | `$~~["\n":""]` | ✅ trim by default |
