@@ -86,7 +86,7 @@ Operations confirmed as necessary:
 
 ## G4 — BashExec shell-safety (single quotes in content)
 
-**Status**: ✅ MAYORMENTE RESUELTO en v0.0.7 — al migrar a `std/json`/`std/io`/`std/net`, el contenido (mensajes, respuestas IA, facts) ya no se interpola en strings de shell, así que la sanitización `$~~["'":"(APOS)"]` se eliminó de history/memory/sessions/ollama/gemini. Solo queda en `lib/config.zy` (sigue usando `jq` por tolerancia a campos ausentes); las API keys/valores de config son shell-safe en la práctica.
+**Status**: ✅ RESUELTO en la app el 2026-10-21 — en v0.0.7, al migrar a `std/json`/`std/io`/`std/net`, el contenido (mensajes, respuestas IA, facts) dejó de interpolarse en strings de shell, y la sanitización `$~~["'":"(APOS)"]` se eliminó de history/memory/sessions/ollama/gemini. El resto era `lib/config.zy`, que leía con siete `jq` y escribía con un `jq -n` que pegaba cada valor entre comillas simples; se mantuvo por la tolerancia a campos ausentes de `// empty`, que el lenguaje ya da con `d$? "clave"`. **Medido antes de migrarlo:** guardar un valor con `'` (una API key, un host, un `tmp_dir`) **no escribía el fichero y no avisaba** — la orden de shell no llegaba a ejecutarse y la configuración entera se perdía; sin comillas guardaba bien (`jq` 1.7). Ahora lee y escribe con `std/io` + `std/json`: un campo ausente o `null` conserva su valor por defecto, un JSON roto o que no es un objeto deja todos los valores por defecto, y `'` y `"` hacen el viaje de ida y vuelta intactos — los seis casos, iguales en `zytw` y `zyvm`. La app ya no necesita `jq`. Lo único de shell que queda en `config.zy` es `printenv HOME`, como en `memory.zy` y `sessions.zy`: `std/io` no expande `~`. **Resto del lenguaje:** `<\ \>` interpola sin escapar, registrado como `interpreter/AGENTIC.md` G2.
 **Status (histórico)**: workaround — sanitizar `'` con `$~~`
 **Discovered**: Design phase
 **Module affected**: `lib/json.zy`, `lib/file.zy`, `lib/history.zy`
@@ -772,7 +772,7 @@ por `\{foo\}`. El intérprete re-interpolaba ambos en runtime.
 | G1 | No HTTP client | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/net` (verificado 2026-10-21 contra un servidor local, `zytw` y `zyvm`). **Resto abierto:** sin control de timeout desde Zymbol | `std/net` (IMPL_V007.md Step 10) |
 | G2 | No JSON encode/decode | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/json` (verificado 2026-10-21) | `std/json` (IMPL_V007.md Step 9) |
 | G3 | No file read/write | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/io` (verificado 2026-10-21) | `std/io` (IMPL_V007.md Step 8) |
-| G4 | BashExec shell-safety (single quotes) | workaround | ✅ mayormente resuelto v0.0.7. **Resto de la app:** `lib/config.zy` sigue leyendo con `jq` por shell. **Resto del lenguaje:** `<\ \>` interpola sin escapar, registrado como `interpreter/AGENTIC.md` G2 | `std/io` + `std/net` (v0.0.6) |
+| G4 | BashExec shell-safety (single quotes) | workaround | ✅ resuelto en la app (v0.0.7; `lib/config.zy` el 2026-10-21, que perdía la configuración en silencio con una `'`). **Resto del lenguaje:** `<\ \>` interpola sin escapar, registrado como `interpreter/AGENTIC.md` G2 | `std/io` + `std/net` (v0.0.6) |
 | G5 | Join strings | — | ✅ `,` operator | ya existe |
 | G6 | Split string | — | ✅ `str / char` | falso warning corregido |
 | G7 | BashExec trailing `\n` | SIGNIFICANT | `$~~["\n":""]` | ✅ trim by default |
