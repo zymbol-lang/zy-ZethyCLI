@@ -187,11 +187,6 @@ project's headline result. See `GAPS.md` for the full log.
 
 ### Still-open friction
 
-- **Concat inside function arguments** — juxtaposition concatenation is rejected as a
-  function-call argument; you must build the string in a variable first
-  (`url = base model; net::get(url)`).
-- **No safe field access on decoded JSON** — accessing a missing NamedTuple field
-  errors; `config.zy` is deliberately kept on `jq` for its tolerant `// empty` defaults.
 - **Module-level vars must be literals** — can't init from an expression/BashExec at
   module top level (resolve `$HOME` in a per-call helper instead).
 
