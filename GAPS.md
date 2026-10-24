@@ -15,7 +15,7 @@
 
 ## G1 — No `std/net` (HTTP client)
 
-**Status**: ✅ RESUELTO en v0.0.7 — `std/net` existe (get/post/post_json/head, con header opcional). `lib/ollama.zy` y `lib/gemini.zy` usan `net::post_json`/`net::get`; `lib/http.zy` (workaround curl) eliminado. Errores de red llegan como `Value::Error` suave (chequeable con `$!`). Limitación restante: sin control de timeout desde Zymbol.
+**Status**: ✅ RESUELTO en v0.0.7 — `std/net` existe (get/post/post_json/head, con header opcional). `lib/ollama.zy` y `lib/gemini.zy` usan `net::post_json`/`net::get`; `lib/http.zy` (workaround curl) eliminado. Errores de red llegan como `Value::Error` suave (chequeable con `$!`). Limitación restante: sin control de timeout desde Zymbol. **Cerrado el 2026-10-24**, decidido por el autor ese día, opción A de 4 (B: `net::limite(s)` para todo el proceso; C: un límite fijo por defecto; D: descartar, por `zymbol run --timeout`): un argumento opcional por llamada, en segundos (Int o Float mayor que cero), detrás de las cabeceras (`net::get(url, [], 5)`, `net::post_json(url, cuerpo, cabeceras, 5)`, `net::head(url, 5)`). Al vencer, `##Network(timeout: no answer within N s)` suave —`head` da `#0`— con las mismas palabras en los tres motores (`zymbol_common::net`); un límite que no es un número positivo es un error duro. Medido antes: contra un servidor que acepta y nunca contesta, los tres motores seguían esperando a los 120 s. Ahora vuelven dentro del límite —también si el servidor manda las cabeceras y deja el cuerpo a medias— y sin límite todo sigue como antes. Sujeto por `zymbol-cli/tests/cli_net_timeout.rs` (los dos motores Rust contra un servidor mudo y uno rápido), `web/tests/test_net.mjs` (zyjs, en la puerta) y tres celdas de `ZyDDT/axes/runtime-std.toml`. **No cubre:** `lib/ollama.zy` sigue sin pasar límite en `is_running()`; ahora puede (`net::get(root_url, [], 5)`), y no se ha tocado. Y un puerto cerrado sigue dando textos distintos en Rust (`io: Connection refused`) y zyjs (`fetch failed`), como antes.
 **Status (histórico)**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 10)
 **Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/http.zy`
@@ -769,7 +769,7 @@ por `\{foo\}`. El intérprete re-interpolaba ambos en runtime.
 
 | ID | Gap | Severity | Workaround | Future module |
 |----|-----|----------|------------|---------------|
-| G1 | No HTTP client | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/net` (verificado 2026-10-21 contra un servidor local, `zytw` y `zyvm`). **Resto abierto:** sin control de timeout desde Zymbol | `std/net` (IMPL_V007.md Step 10) |
+| G1 | No HTTP client | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/net` (verificado 2026-10-21 contra un servidor local, `zytw` y `zyvm`). **Resto cerrado 2026-10-24:** límite de tiempo por llamada, opción A (`net::get(url, [], 5)`) | `std/net` (IMPL_V007.md Step 10) |
 | G2 | No JSON encode/decode | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/json` (verificado 2026-10-21) | `std/json` (IMPL_V007.md Step 9) |
 | G3 | No file read/write | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/io` (verificado 2026-10-21) | `std/io` (IMPL_V007.md Step 8) |
 | G4 | BashExec shell-safety (single quotes) | workaround | ✅ resuelto en la app (v0.0.7; `lib/config.zy` el 2026-10-21, que perdía la configuración en silencio con una `'`). **Resto del lenguaje:** `<\ \>` interpolaba sin escapar — AGENTIC G2, corregido el 2026-10-22 | `std/io` + `std/net` (v0.0.6) |
