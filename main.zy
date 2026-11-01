@@ -330,9 +330,9 @@ ready = #0
                     ? (args == "") {
                         ui::show_error("Usage: /file <path>")
                     } _ {
-                        exists = <\ "test -f '" args "' && echo 1 || echo 0" \>
+                        exists = <\ "test -f " args " && echo 1 || echo 0" \>
                         ? (exists$~~["\n":""] == "1") {
-                            size = <\ "du -sh '" args "' | cut -f1" \>
+                            size = <\ "du -sh " args " | cut -f1" \>
                             size = size$~~["\n":""]
                             ui::show_info("Sending file: " $++ args " (" size ")")
                             hist::add_user_from_file(args, args)

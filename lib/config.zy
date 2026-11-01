@@ -1,8 +1,18 @@
-// Persistent configuration — ~/.ZethyCLI/ZethyCLI.conf (JSON via jq)
+// Persistent configuration — ~/.ZethyCLI/ZethyCLI.conf (JSON)
 // Loaded once at startup; saved on every /model, /mode, /host command.
 // tmp_dir is only applied at startup — change it by editing the config file directly.
+//
+// Migrated to the v0.0.7 stdlib on 2026-10-21 (G4): read with std/io + std/json
+// instead of seven `jq` calls, written with json::encode instead of a `jq -n`
+// command line. That command line pasted every value between single quotes, so
+// an API key, host or path holding a `'` broke it — the shell-safety gap G4
+// names. A field missing from the file, or `null`, keeps its default, as
+// `jq -r '.x // empty'` did; a number is read as its text.
 
 # config {
+    <# std/io   => io
+    <# std/json => json
+
     #> {
         load
         save
@@ -26,57 +36,69 @@
     cfg_provider = "ollama"
     cfg_api_key  = ""
 
+    // ~/.ZethyCLI — std/io does not expand `~`, and module variables must be
+    // literals, so the home dir is looked up per call (as memory.zy does).
+    conf_dir() {
+        home = <\ "printenv HOME" \>
+        <~ home "/.ZethyCLI"
+    }
+
+    // A field of the decoded config as text: "" when it is absent or null.
+    field(cfg, key) {
+        ? cfg$? key { <~ "" cfg[key] }
+        <~ ""
+    }
+
     load() {
-        <\ "mkdir -p ~/.ZethyCLI" \>
-        exists = <\ "test -f ~/.ZethyCLI/ZethyCLI.conf && echo 1 || echo 0" \>
-        ? (exists$~~["\n":""] == "1") {
-            raw_model   = <\ "jq -r '.model   // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_mode    = <\ "jq -r '.mode    // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_think   = <\ "jq -r '.think   // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_host    = <\ "jq -r '.host     // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_tmp_dir = <\ "jq -r '.tmp_dir  // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_prov    = <\ "jq -r '.provider // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
-            raw_key     = <\ "jq -r '.api_key  // empty' ~/.ZethyCLI/ZethyCLI.conf" \>
+        dir  = conf_dir()
+        _m   = io::mkdir(dir)
+        file = dir "/ZethyCLI.conf"
+        ? io::exists(file) {
+            raw = io::read(file)
+            cfg = json::decode(raw)
+            // An unreadable file, malformed JSON or anything but an object
+            // leaves every default in place.
+            ? !raw$! && !cfg$! && (cfg#?)[1] == "##(" {
+                m = field(cfg, "model")
+                ? (m <> "") { cfg_model = m }
 
-            m = raw_model$~~["\n":""]
-            ? (m <> "") { cfg_model = m }
+                o = field(cfg, "mode")
+                ? (o <> "") { cfg_mode = o }
 
-            o = raw_mode$~~["\n":""]
-            ? (o <> "") { cfg_mode = o }
+                // `think` is written as a JSON boolean; "true" as text is read too.
+                t = field(cfg, "think")
+                ? (t == "#1" || t == "true") { cfg_think = #1 }
 
-            t = raw_think$~~["\n":""]
-            ? (t == "true") { cfg_think = #1 }
+                h = field(cfg, "host")
+                ? (h <> "") { cfg_host = h }
 
-            h = raw_host$~~["\n":""]
-            ? (h <> "") { cfg_host = h }
+                d = field(cfg, "tmp_dir")
+                ? (d <> "") { cfg_tmp_dir = d }
 
-            d = raw_tmp_dir$~~["\n":""]
-            ? (d <> "") { cfg_tmp_dir = d }
+                pv = field(cfg, "provider")
+                ? (pv <> "") { cfg_provider = pv }
 
-            pv = raw_prov$~~["\n":""]
-            ? (pv <> "") { cfg_provider = pv }
-
-            k = raw_key$~~["\n":""]
-            ? (k <> "") { cfg_api_key = k }
+                k = field(cfg, "api_key")
+                ? (k <> "") { cfg_api_key = k }
+            }
         }
         // Ensure tmp dir exists on every startup
-        tmp = cfg_tmp_dir
-        <\ "mkdir -p " tmp \>
+        _t = io::mkdir(cfg_tmp_dir)
     }
 
     // Persist current session config to disk.
-    // think is a Zymbol bool — converted to JSON boolean string before jq call.
+    // provider + api_key come from module state (set via set_provider/set_api_key).
     save(model, mode, think, host, tmp_dir) {
-        s_model   = model
-        s_mode    = mode
-        s_think   = "false"
-        ? think { s_think = "true" }
-        s_host    = host
-        s_tmp_dir = tmp_dir
-        // provider + api_key come from module state (set via set_provider/set_api_key)
-        s_prov    = cfg_provider
-        s_key     = cfg_api_key
-        <\ "jq -n --arg model '" s_model "' --arg mode '" s_mode "' --argjson think " s_think " --arg host '" s_host "' --arg tmp_dir '" s_tmp_dir "' --arg provider '" s_prov "' --arg api_key '" s_key "' '\{\"model\":$model,\"mode\":$mode,\"think\":$think,\"host\":$host,\"tmp_dir\":$tmp_dir,\"provider\":$provider,\"api_key\":$api_key\}' > ~/.ZethyCLI/ZethyCLI.conf" \>
+        cfg = #(
+            model: model,
+            mode: mode,
+            think: think,
+            host: host,
+            tmp_dir: tmp_dir,
+            provider: cfg_provider,
+            api_key: cfg_api_key
+        )
+        _w = io::write(conf_dir() "/ZethyCLI.conf", json::encode(cfg))
     }
 
     get_model()    { <~ cfg_model    }

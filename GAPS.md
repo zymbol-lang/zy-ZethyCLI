@@ -15,7 +15,7 @@
 
 ## G1 — No `std/net` (HTTP client)
 
-**Status**: ✅ RESUELTO en v0.0.7 — `std/net` existe (get/post/post_json/head, con header opcional). `lib/ollama.zy` y `lib/gemini.zy` usan `net::post_json`/`net::get`; `lib/http.zy` (workaround curl) eliminado. Errores de red llegan como `Value::Error` suave (chequeable con `$!`). Limitación restante: sin control de timeout desde Zymbol.
+**Status**: ✅ RESUELTO en v0.0.7 — `std/net` existe (get/post/post_json/head, con header opcional). `lib/ollama.zy` y `lib/gemini.zy` usan `net::post_json`/`net::get`; `lib/http.zy` (workaround curl) eliminado. Errores de red llegan como `Value::Error` suave (chequeable con `$!`). Limitación restante: sin control de timeout desde Zymbol. **Cerrado el 2026-10-24**, decidido por el autor ese día, opción A de 4 (B: `net::limite(s)` para todo el proceso; C: un límite fijo por defecto; D: descartar, por `zymbol run --timeout`): un argumento opcional por llamada, en segundos (Int o Float, `0` o más), detrás de las cabeceras (`net::get(url, [], 5)`, `net::post_json(url, cuerpo, cabeceras, 5)`, `net::head(url, 5)`). **Ampliado el mismo día por el autor con lo de B:** `net::timeout(s)` fija el límite del proceso para toda petición que no dé el suyo, y devuelve el que reemplaza (`0` si no había); `0` es «sin límite», en una llamada —aunque haya uno del proceso— y en `timeout`. Al vencer, `##Network(timeout: no answer within N s)` suave —`head` da `#0`— con las mismas palabras en los tres motores (`zymbol_common::net`); un límite negativo o que no es número es un error duro. Medido antes: contra un servidor que acepta y nunca contesta, los tres motores seguían esperando a los 120 s. Ahora vuelven dentro del límite —también si el servidor manda las cabeceras y deja el cuerpo a medias— y sin límite todo sigue como antes. Sujeto por `zymbol-cli/tests/cli_net_timeout.rs` (los dos motores Rust contra un servidor mudo y uno rápido, con el límite de la llamada y el del proceso puesto desde un módulo), `web/tests/test_net.mjs` (zyjs, en la puerta) y seis celdas de `ZyDDT/axes/runtime-std.toml` (lo que devuelve `timeout`, que es del proceso, y los rechazos). **No cubre:** `lib/ollama.zy` sigue sin pasar límite en `is_running()`; ahora puede (`net::get(root_url, [], 5)`), y no se ha tocado. Y un puerto cerrado sigue dando textos distintos en Rust (`io: Connection refused`) y zyjs (`fetch failed`), como antes.
 **Status (histórico)**: propuesto v0.0.6 — diseñado en `IMPL_V007.md` (Step 10)
 **Nature**: Intentional — documented to define stdlib roadmap priority
 **Module affected**: `lib/http.zy`
@@ -86,7 +86,7 @@ Operations confirmed as necessary:
 
 ## G4 — BashExec shell-safety (single quotes in content)
 
-**Status**: ✅ MAYORMENTE RESUELTO en v0.0.7 — al migrar a `std/json`/`std/io`/`std/net`, el contenido (mensajes, respuestas IA, facts) ya no se interpola en strings de shell, así que la sanitización `$~~["'":"(APOS)"]` se eliminó de history/memory/sessions/ollama/gemini. Solo queda en `lib/config.zy` (sigue usando `jq` por tolerancia a campos ausentes); las API keys/valores de config son shell-safe en la práctica.
+**Status**: ✅ RESUELTO en la app el 2026-10-21 — en v0.0.7, al migrar a `std/json`/`std/io`/`std/net`, el contenido (mensajes, respuestas IA, facts) dejó de interpolarse en strings de shell, y la sanitización `$~~["'":"(APOS)"]` se eliminó de history/memory/sessions/ollama/gemini. El resto era `lib/config.zy`, que leía con siete `jq` y escribía con un `jq -n` que pegaba cada valor entre comillas simples; se mantuvo por la tolerancia a campos ausentes de `// empty`, que el lenguaje ya da con `d$? "clave"`. **Medido antes de migrarlo:** guardar un valor con `'` (una API key, un host, un `tmp_dir`) **no escribía el fichero y no avisaba** — la orden de shell no llegaba a ejecutarse y la configuración entera se perdía; sin comillas guardaba bien (`jq` 1.7). Ahora lee y escribe con `std/io` + `std/json`: un campo ausente o `null` conserva su valor por defecto, un JSON roto o que no es un objeto deja todos los valores por defecto, y `'` y `"` hacen el viaje de ida y vuelta intactos — los seis casos, iguales en `zytw` y `zyvm`. La app ya no necesita `jq`. Lo único de shell que queda en `config.zy` es `printenv HOME`, como en `memory.zy` y `sessions.zy`: `std/io` no expande `~`. **Resto del lenguaje:** `<\ \>` interpolaba sin escapar (`interpreter/AGENTIC.md` G2); corregido el 2026-10-22 — un valor llega como una sola palabra entrecomillada —, y con él se quitaron las comillas a mano de `main.zy` (`test -f`, `du -sh`) y `lib/ollama.zy` (`grep -qx`).
 **Status (histórico)**: workaround — sanitizar `'` con `$~~`
 **Discovered**: Design phase
 **Module affected**: `lib/json.zy`, `lib/file.zy`, `lib/history.zy`
@@ -769,10 +769,10 @@ por `\{foo\}`. El intérprete re-interpolaba ambos en runtime.
 
 | ID | Gap | Severity | Workaround | Future module |
 |----|-----|----------|------------|---------------|
-| G1 | No HTTP client | intentional — stdlib roadmap | curl via BashExec | `std/net` (IMPL_V007.md Step 10) |
-| G2 | No JSON encode/decode | intentional — stdlib roadmap | jq via BashExec | `std/json` (IMPL_V007.md Step 9) |
-| G3 | No file read/write | intentional — stdlib roadmap | cat/printf via BashExec | `std/io` (IMPL_V007.md Step 8) |
-| G4 | BashExec shell-safety (single quotes) | workaround | sanitize `'` | `std/io` + `std/net` (v0.0.6) |
+| G1 | No HTTP client | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/net` (verificado 2026-10-21 contra un servidor local, `zytw` y `zyvm`). **Resto cerrado 2026-10-24:** límite de tiempo por llamada (`net::get(url, [], 5)`) y del proceso (`net::timeout(s)`) | `std/net` (IMPL_V007.md Step 10) |
+| G2 | No JSON encode/decode | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/json` (verificado 2026-10-21) | `std/json` (IMPL_V007.md Step 9) |
+| G3 | No file read/write | intentional — stdlib roadmap | ✅ resuelto v0.0.7 — `std/io` (verificado 2026-10-21) | `std/io` (IMPL_V007.md Step 8) |
+| G4 | BashExec shell-safety (single quotes) | workaround | ✅ resuelto en la app (v0.0.7; `lib/config.zy` el 2026-10-21, que perdía la configuración en silencio con una `'`). **Resto del lenguaje:** `<\ \>` interpolaba sin escapar — AGENTIC G2, corregido el 2026-10-22 | `std/io` + `std/net` (v0.0.6) |
 | G5 | Join strings | — | ✅ `,` operator | ya existe |
 | G6 | Split string | — | ✅ `str / char` | falso warning corregido |
 | G7 | BashExec trailing `\n` | SIGNIFICANT | `$~~["\n":""]` | ✅ trim by default |

@@ -35,7 +35,7 @@ Model strings are inlined directly in `main.zy` — no exported constants in `ol
 ZethyCLI/
   main.zy               Entry point — REPL loop, inline command dispatcher
   lib/
-    config.zy           Persistent config — ~/.ZethyCLI/ZethyCLI.conf (JSON via jq)
+    config.zy           Persistent config — ~/.ZethyCLI/ZethyCLI.conf (std/io + std/json)
     ui.zy               Terminal output (box-drawing, formatting) — pure Zymbol
     history.zy          Conversation state — volatile session buffer (msgs.json)
     memory.zy           Persistent cross-session memory — ~/.ZethyCLI/memory.txt
@@ -204,8 +204,10 @@ Comments and function definitions can appear anywhere inside the block.
 
 ### lib/config.zy
 
-Reads and writes `~/.ZethyCLI/ZethyCLI.conf` using jq. All values have in-code
-defaults so the file is optional — created on first `/model`, `/mode` or `/host`.
+Reads and writes `~/.ZethyCLI/ZethyCLI.conf` with `std/io` and `std/json` (with jq
+through the shell until 2026-10-21 — see GAPS.md G4). All values have in-code
+defaults so the file is optional — created on first `/model`, `/mode` or `/host`. A
+field missing from the file, or `null`, keeps its default (`cfg$? "model"`).
 
 Private mutable state: `cfg_model`, `cfg_mode`, `cfg_think`, `cfg_host`, `cfg_tmp_dir`.
 All five are set by `load()` and persisted by `save()`.

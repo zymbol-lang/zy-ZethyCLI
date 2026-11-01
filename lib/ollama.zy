@@ -117,7 +117,7 @@
 
     // Check if a specific model name exists in `ollama list` (CLI check — not a gap).
     model_exists(name) {
-        result = <\ "ollama list 2>/dev/null | tail -n +2 | awk '\{print $1\}' | grep -qx '" name "' && echo 1 || echo 0" \>
+        result = <\ "ollama list 2>/dev/null | tail -n +2 | awk '\{print $1\}' | grep -qx " name " && echo 1 || echo 0" \>
         <~ (result$~~["\n":""] == "1")
     }
 
